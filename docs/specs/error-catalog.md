@@ -49,6 +49,7 @@ MVP does not perform automatic retry. Users can submit a new job explicitly.
 | unsupported config schema | any using config | `2` | no | schema version |
 | `submit --command` missing | `submit` | `2` | no | `--command` |
 | `submit --timeout-sec` is not a positive integer | `submit` | `2` | no | `--timeout-sec` |
+| `submit --jetstream` is combined with `--no-require-worker` | `submit` | `2` | no | conflicting options |
 | params file is missing, unreadable, invalid JSON, or not an object | `submit` | `2` | no | params path |
 | `submit --repo` is not a Git repository | `submit` | `3` | no | repo path |
 | `submit --commit` cannot be resolved | `submit` | `3` | no | commit value |
@@ -58,12 +59,13 @@ MVP does not perform automatic retry. Users can submit a new job explicitly.
 | `git add -A` fails | `submit --commit-and-push` | `3` | no | git stderr summary |
 | commit fails | `submit --commit-and-push` | `3` | no | git stderr summary |
 | push fails | `submit --commit-and-push` | `3` | no | git stderr summary |
-| NATS connect or publish fails | `submit` | `4` | no | NATS URL and operation |
-| no matching worker accepts submit dispatch | `submit` | `4` | no | routing tag and `--no-require-worker` bypass |
+| NATS connect, publish, or JetStream setup fails | `submit` | `4` | no | NATS URL and operation |
+| no matching worker accepts core submit dispatch | `submit` | `4` | no | routing tag, default core mode, and `--no-require-worker` or `--jetstream` alternative |
 | local job store write fails | `submit`, `worker`, `status`, `logs`, `get` | `5` | no | path and operation |
 | `worker --worker-id` missing and config missing | `worker` | `2` | no | `worker_id` |
 | worker key missing | `worker` | `2` | no | `--worker-key` or `GIT_RUNNER_WORKER_KEY` |
 | worker NATS connect fails | `worker` | `4` | no | NATS URL |
+| worker JetStream consumer setup fails | `worker` | `4` | no | stream/consumer setup and NATS URL |
 | `status` job id missing | `status` | `2` | no | job id |
 | `logs` job id missing | `logs` | `2` | no | job id |
 | `get` job id missing | `get` | `2` | no | job id |

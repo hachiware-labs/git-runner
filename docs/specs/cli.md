@@ -88,6 +88,7 @@ git-runner submit \
   [--result-schema schemas/result.schema.json] \
   [--worker-tags default] \
   [--timeout-sec 3600] \
+  [--jetstream] \
   [--no-require-worker] \
   [--dry-run]
 ```
@@ -132,6 +133,11 @@ Dispatch behavior:
 - If no worker accepts the job, submit fails with NATS exit code `4` and removes the local pending job metadata.
 - `--no-require-worker` disables this guard and uses publish-only delivery.
 - With the guard disabled, NATS core publish/subscribe does not retain the job for workers that subscribe later.
+- `--jetstream` publishes the job to JetStream stream `GIT_RUNNER_JOBS`.
+- In JetStream mode, a matching worker can start after submit and still receive the job.
+- `--jetstream` requires the NATS server to have JetStream enabled. The CLI does not start or manage the NATS server.
+- JetStream delivery is at-least-once. The worker acknowledges the message only after a terminal job result is written.
+- `--jetstream` and `--no-require-worker` are mutually exclusive because `--no-require-worker` only applies to NATS core dispatch.
 
 Submit builds a Job Spec and dispatches it to:
 
@@ -175,6 +181,7 @@ git-runner worker \
   [--tags default,gpu-large] \
   [--allow-repo git@github.com:user/project.git] \
   [--allow-all-repos] \
+  [--jetstream] \
   [--once] \
   [--job-store-root .git-runner/jobs] \
   [--config .git-runner/worker.json]
@@ -190,7 +197,7 @@ Behavior:
 1. Load worker config.
 2. Connect to NATS.
 3. Validate worker key according to MVP policy.
-4. Subscribe to job subjects for configured tags.
+4. Subscribe to job subjects for configured tags, or bind JetStream durable consumers when `--jetstream` or `delivery_mode: "jetstream"` is configured.
 5. Validate job against worker policy.
 6. Prepare workspace.
 7. Start executor process.
@@ -198,6 +205,11 @@ Behavior:
 9. Return to idle state after terminal job status.
 
 If `--once` is provided, worker exits after one accepted job reaches a terminal status. Without `--once`, worker stays subscribed.
+
+Delivery modes:
+
+- `core`: default. Worker subscribes to NATS core subjects `git-runner.jobs.<tag>`.
+- `jetstream`: worker creates or binds durable consumers for `GIT_RUNNER_JOBS`, filtered by `git-runner.jobs.<tag>`.
 
 Repository policy:
 

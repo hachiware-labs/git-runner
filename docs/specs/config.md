@@ -71,6 +71,7 @@ Schema:
   "workspace_root": ".git-runner/workspaces",
   "repo_cache_root": ".git-runner/repo-cache",
   "job_store_root": ".git-runner/jobs",
+  "delivery_mode": "core",
   "cleanup": {
     "mode": "after_job"
   }
@@ -87,6 +88,7 @@ Rules:
 - `allowed_repos` defaults to `[]`.
 - `allow_all_repos` defaults to `false`.
 - If `allow_all_repos` is `false` and `allowed_repos` is empty, the worker starts but denies all repository jobs.
+- `delivery_mode` defaults to `core` and must be `core` or `jetstream`.
 - `cleanup.mode` defaults to `after_job`.
 
 ## 3. Environment Variables

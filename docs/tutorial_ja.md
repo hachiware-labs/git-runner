@@ -53,6 +53,14 @@ accepted job を 30 秒で stale と判定する例:
 node bin/git-runner.js status <job-id> --stale-after-sec 30
 ```
 
+durable な job delivery が必要な場合は、NATS を JetStream 有効で起動します。
+
+```bash
+nats-server -js
+```
+
+その場合は `submit` と `worker` の両方に `--jetstream` を渡します。JetStream mode は job を stream `GIT_RUNNER_JOBS` に保存するため、worker は submit 後に起動しても job を受け取れます。
+
 ## 3. git-runner config を初期化する
 
 default config を作成します。
@@ -138,6 +146,15 @@ node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
 ```
 
 guard を外すと、`submit` は publish-only delivery を使います。NATS core は後から subscribe した worker のために job を保持しません。
+
+代わりに JetStream durable delivery を使う場合は、`nats-server -js` で NATS を起動し、`--jetstream` を付けて submit と worker を実行します。
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test" --jetstream
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+```
+
+delivery は at-least-once です。worker が message ack 前に crash した場合、JetStream は job を再配送できます。そのため、job command は再実行されてもよい形にしてください。
 
 worker は以下を行います。
 

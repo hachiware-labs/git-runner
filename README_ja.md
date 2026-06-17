@@ -24,8 +24,10 @@ branch 名は動きます。`git-runner` は実行対象を commit SHA に固定
 - `git-runner submit`
 - `git-runner submit --dry-run`
 - `git-runner submit --commit-and-push`
+- `git-runner submit --jetstream`
 - `git-runner worker --once`
 - NATS への job publish と worker subscribe
+- JetStream による任意の durable job delivery
 - `source.commit` の detached checkout
 - worker tag / repository policy
 - timeout と cancellation
@@ -48,6 +50,7 @@ MVP の対象外:
 - Node.js 22 以上
 - Git
 - dry-run 以外の submit/worker flow では NATS server
+- `--jetstream` を使う場合は JetStream 有効の NATS server
 
 この checkout で依存関係を入れます。
 
@@ -108,6 +111,16 @@ node bin/git-runner.js get <job-id> --json
 
 重要: MVP の default job dispatch は NATS core request/reply を使っており、durable queue ではありません。default では、`submit` は一致する worker が job message を accept したことを確認してから戻ります。worker が accept しない場合、pending job を残さずに失敗します。この guard を意図的に外す場合だけ `--no-require-worker` を使います。
 
+durable な local delivery が必要な場合は、NATS を JetStream 有効で起動し、submit と worker の両方に `--jetstream` を渡します。
+
+```bash
+nats-server -js
+node bin/git-runner.js submit --repo . --command "npm test" --jetstream
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+```
+
+JetStream mode では、`submit` は job を stream `GIT_RUNNER_JOBS` に保存します。一致する worker は submit 後に起動しても job を受け取れます。delivery は at-least-once なので、worker が message ack 前に crash した場合に備えて、command は再実行されてもよい形にする必要があります。
+
 worker が job を accept した後、validation や execution の前に crash した場合、latest status が `ACCEPTED` のまま残ることがあります。これは job が worker に届いたが、terminal result は記録されていない状態を意味します。
 
 `status --stale-after-sec <seconds>` で、一定時間進んでいない `ACCEPTED` job を検出できます。これは診断用で、MVP は stale job を自動 retry しません。
@@ -141,6 +154,14 @@ node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
 ```
 
 guard を外すと、`submit` は publish-only delivery を使います。NATS core は後から subscribe した worker のために job を保持しません。
+
+JetStream durable delivery を使う:
+
+```bash
+nats-server -js
+node bin/git-runner.js submit --repo . --command "npm test" --jetstream
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+```
 
 submit 前に commit / push する:
 

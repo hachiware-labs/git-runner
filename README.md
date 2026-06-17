@@ -24,8 +24,10 @@ Implemented MVP capabilities:
 - `git-runner submit`
 - `git-runner submit --dry-run`
 - `git-runner submit --commit-and-push`
+- `git-runner submit --jetstream`
 - `git-runner worker --once`
 - NATS job publish and worker subscribe
+- optional JetStream-backed durable job delivery
 - detached checkout of `source.commit`
 - worker policy checks for tags and repositories
 - timeout and cancellation handling
@@ -48,6 +50,7 @@ Out of scope for the MVP:
 - Node.js 22 or newer
 - Git
 - NATS server for non-dry-run submit/worker flows
+- NATS server with JetStream enabled when using `--jetstream`
 
 Install dependencies from this checkout:
 
@@ -108,6 +111,16 @@ For a complete walkthrough, see [docs/tutorial.md](docs/tutorial.md).
 
 Important: the MVP uses NATS core request/reply for default job dispatch, not a durable queue. By default, `submit` requires a matching worker to accept the job message before returning. If no worker accepts it, submit fails and does not leave a pending job. Use `--no-require-worker` only when you intentionally want to bypass this guard.
 
+For durable local delivery, start NATS with JetStream and pass `--jetstream` to both submit and worker:
+
+```bash
+nats-server -js
+node bin/git-runner.js submit --repo . --command "npm test" --jetstream
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+```
+
+In JetStream mode, `submit` stores the job in stream `GIT_RUNNER_JOBS`; a matching worker can start after submit and still receive the job. Delivery is at-least-once, so commands should be safe to rerun if a worker crashes before acknowledging the message.
+
 If a worker accepts a job and then crashes before validation or execution, the latest status may remain `ACCEPTED`. That indicates the job was delivered to a worker but no terminal result was recorded.
 
 Use `status --stale-after-sec <seconds>` to detect an `ACCEPTED` job that has not advanced. This is diagnostic only; the MVP does not retry stale jobs automatically.
@@ -141,6 +154,14 @@ node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
 ```
 
 With the guard disabled, `submit` uses publish-only delivery and NATS core does not retain the job for a worker that subscribes later.
+
+Use JetStream durable delivery:
+
+```bash
+nats-server -js
+node bin/git-runner.js submit --repo . --command "npm test" --jetstream
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+```
 
 Commit and push changes before submitting:
 

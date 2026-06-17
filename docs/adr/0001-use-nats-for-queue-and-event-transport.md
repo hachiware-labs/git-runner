@@ -34,7 +34,7 @@ NATS server は同梱しない。利用者は `GIT_RUNNER_NATS_URL` または CL
 - submitter と worker を疎結合にできる。
 - routing tag による worker 選択を実装しやすい。
 - NATS server がない環境では integration / e2e test は実行できない。
-- NATS の永続化、JetStream、Object Store の採用範囲は specs で段階的に定義する必要がある。
+- NATS の永続化、JetStream、Object Store の採用範囲は specs で段階的に定義する必要がある。Job delivery の JetStream mode は [ADR 0007](0007-add-jetstream-job-delivery-mode.md) で定義する。
 
 ## Alternatives Considered
 

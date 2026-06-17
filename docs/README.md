@@ -30,3 +30,4 @@
 - worker は branch を再解決せず、指定 commit を detached HEAD で checkout する。
 - `--commit-and-push` なしに勝手に commit / push しない。
 - worker supervisor と executor process は分離する。
+- durable job delivery が必要な場合は JetStream mode を明示的に選ぶ。

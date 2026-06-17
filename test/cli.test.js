@@ -186,6 +186,14 @@ test("status rejects invalid stale threshold", async () => {
   assert.match(result.stderr, /--stale-after-sec/);
 });
 
+test("submit rejects conflicting JetStream and core publish-only options", async () => {
+  const cwd = await tempDir();
+  const result = await runCli(["submit", "--command", "npm test", "--jetstream", "--no-require-worker"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.invalidUsage);
+  assert.match(result.stderr, /--jetstream cannot be combined/);
+});
+
 test("worker refuses to start without worker key", async () => {
   const cwd = await tempDir();
   const result = await runCli(["worker", "--worker-id", "local-001", "--once"], cwd);

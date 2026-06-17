@@ -23,6 +23,7 @@ Example:
   "workspace_root": ".git-runner/workspaces",
   "repo_cache_root": ".git-runner/repo-cache",
   "job_store_root": ".git-runner/jobs",
+  "delivery_mode": "core",
   "cleanup": {
     "mode": "after_job"
   }
@@ -41,13 +42,27 @@ Worker startup sequence:
 4. Resolve tags.
 5. Connect to NATS.
 6. Publish worker heartbeat.
-7. Subscribe to job subjects for tags.
+7. Subscribe to job subjects for tags, or bind JetStream durable consumers when `delivery_mode` is `jetstream`.
 
 Subject subscription for tags:
 
 ```text
 git-runner.jobs.<tag>
 ```
+
+Delivery modes:
+
+- `core`: default. Worker receives NATS core messages on `git-runner.jobs.<tag>`.
+- `jetstream`: worker creates or binds a durable consumer on stream `GIT_RUNNER_JOBS` for each tag.
+
+JetStream consumer contract:
+
+- stream name: `GIT_RUNNER_JOBS`
+- stream subjects: `git-runner.jobs.*`
+- durable name: `git_runner_<tag>` with unsupported characters replaced by `_`
+- filter subject: `git-runner.jobs.<tag>`
+- ack policy: explicit
+- max ack pending: `1`
 
 ## 4. Job Handling
 
@@ -69,7 +84,8 @@ For each job:
 14. Collect artifacts.
 15. Publish terminal status.
 16. Cleanup workspace according to config.
-17. Return to idle state.
+17. Acknowledge the JetStream message when JetStream delivery is used.
+18. Return to idle state.
 
 ## 5. Git Workspace
 

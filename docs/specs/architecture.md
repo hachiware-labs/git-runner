@@ -15,7 +15,7 @@ git-runner CLI
   |     Git repository inspection
   |     ref resolution to commit SHA
   |     Job Spec creation
-  |     NATS job dispatch
+  |     NATS core or JetStream job dispatch
   |
   +-- inspection commands
   |     read local job store
@@ -61,7 +61,7 @@ checked-out Git workspace
 | --- | --- | --- |
 | Research Booster | experiment meaning, result interpretation, Finding, Recommendation | Git checkout, worker process management, command execution |
 | CLI submitter | repository inspection, ref resolution, Job Spec creation, NATS job dispatch | worker policy decision, command execution |
-| NATS transport | message transport and subject routing | job semantics, result interpretation, NATS server lifecycle |
+| NATS transport | message transport, subject routing, optional JetStream job durability | job semantics, result interpretation, NATS server lifecycle |
 | worker supervisor | job acceptance, policy validation, workspace lifecycle, git checkout, executor lifecycle, timeout, terminal status mapping | direct command execution, Research Booster semantics |
 | executor process | setup and entry command execution in a checked-out workspace | NATS connection, job routing, worker policy |
 | local job store | persisted job spec, latest status, logs, result summary, artifacts | distributed storage without shared filesystem |
@@ -81,6 +81,7 @@ checked-out Git workspace
 6. CLI dispatches Job Spec to `git-runner.jobs.<routing-tag>`.
    - By default this uses NATS request/reply and requires a worker acceptance response.
    - With `--no-require-worker`, this uses publish-only delivery.
+   - With `--jetstream`, this publishes to JetStream stream `GIT_RUNNER_JOBS` for durable at-least-once delivery.
 7. CLI prints `job_id`, `commit`, and subject.
 
 Submitter never executes the job command.
@@ -90,7 +91,7 @@ Submitter never executes the job command.
 1. Worker loads worker config.
 2. Worker validates that worker key is present.
 3. Worker connects to NATS.
-4. Worker subscribes to job subjects for configured tags.
+4. Worker subscribes to job subjects for configured tags, or binds JetStream durable consumers when JetStream delivery is selected.
 5. Worker receives a Job Spec.
 6. Worker writes and publishes `ACCEPTED` when `job_id` is valid.
 7. Worker responds to request/reply dispatch when a reply subject is present.
@@ -168,6 +169,7 @@ Out of MVP scope:
 | invalid CLI input | CLI | fail before publishing a job |
 | NATS dispatch/connect failure | CLI or worker | fail command or worker startup; no fake success |
 | worker crash after dispatch acceptance | worker supervisor boundary | latest local status may remain `ACCEPTED`; no automatic retry in MVP |
+| worker crash before JetStream ack | NATS transport / worker supervisor boundary | JetStream may redeliver the job; job command must tolerate at-least-once execution |
 | invalid Job Spec | worker supervisor | terminal `FAILED` with `job_invalid` |
 | worker policy denial | worker supervisor | terminal `FAILED` with `worker_policy_denied` |
 | clone/fetch/checkout failure | worker supervisor | terminal `FAILED` with `git_checkout_failed` |

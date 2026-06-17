@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -91,7 +91,7 @@ function natsServerPath() {
   return existsSync(candidate) ? candidate : null;
 }
 
-async function withNats(t, fn) {
+async function withNats(t, fn, { jetstream = false } = {}) {
   const natsPath = natsServerPath();
   if (!natsPath) {
     t.skip("NATS server path is not available");
@@ -99,11 +99,19 @@ async function withNats(t, fn) {
   }
 
   const port = 4230 + Math.floor(Math.random() * 200);
-  const nats = spawn(natsPath, ["-p", String(port)], { windowsHide: true });
-  t.after(() => {
-    nats.kill();
+  const storeDir = jetstream ? await tempDir("git-runner-js-store-") : null;
+  const args = ["-p", String(port), ...(jetstream ? ["-js", "-sd", storeDir] : [])];
+  const nats = spawn(natsPath, args, {
+    windowsHide: true,
+    stdio: ["ignore", "ignore", "ignore"]
   });
-  await new Promise((resolve) => setTimeout(resolve, 750));
+  t.after(async () => {
+    nats.kill();
+    if (storeDir) {
+      await rm(storeDir, { recursive: true, force: true });
+    }
+  });
+  await new Promise((resolve) => setTimeout(resolve, jetstream ? 1000 : 750));
   await fn({ natsUrl: `nats://127.0.0.1:${port}` });
 }
 
@@ -150,12 +158,13 @@ async function runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsU
   worker.stderr.on("data", (chunk) => {
     stderr += chunk.toString();
   });
+  const exitPromise = new Promise((resolve) => worker.on("exit", (code) => resolve(code)));
   t.after(() => {
     worker.kill();
   });
   await new Promise((resolve) => setTimeout(resolve, 750));
   return {
-    wait: () => new Promise((resolve) => worker.on("exit", (code) => resolve(code))),
+    wait: () => exitPromise,
     output: () => ({ stdout, stderr })
   };
 }
@@ -279,6 +288,38 @@ test("submit can bypass worker dispatch guard explicitly", async (t) => {
 
     assert.equal(status.status, "PENDING");
   });
+});
+
+test("jetstream submit persists job until worker starts", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo();
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+
+    const submitOutput = await submitJob({
+      sourceRepo,
+      jobStoreRoot,
+      natsUrl,
+      extraArgs: ["--jetstream"]
+    });
+
+    const pending = JSON.parse(await readFile(path.join(jobStoreRoot, submitOutput.job_id, "status.json"), "utf8"));
+    assert.equal(pending.status, "PENDING");
+
+    const worker = await runWorkerOnce({
+      t,
+      runnerRoot,
+      jobStoreRoot,
+      workspaceRoot,
+      natsUrl,
+      extraArgs: ["--allow-all-repos", "--jetstream"]
+    });
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(result.exit_code, 0);
+    assert.deepEqual(result.result, { ok: true });
+  }, { jetstream: true });
 });
 
 test("worker records worker_policy_denied when repository is not allowed", async (t) => {

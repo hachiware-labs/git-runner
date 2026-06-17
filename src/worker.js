@@ -7,6 +7,7 @@ import { connect } from "@nats-io/transport-node";
 import { loadWorkerConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES } from "./errors.js";
 import { checkoutDetached, cloneRepository, fetchRepository } from "./git.js";
+import { getJetStreamJobConsumer } from "./jetstream-jobs.js";
 import { resolveInside } from "./path-utils.js";
 import { copyJobLogs, ensureJobDir, writeJobSpec, writeJobStatus, writeResultSummary } from "./job-store.js";
 
@@ -56,13 +57,18 @@ export async function runWorker(options) {
   }, 10000);
 
   try {
-    const subscriptions = workerConfig.tags.map((tag) => connection.subscribe(`git-runner.jobs.${tag}`));
-    const loops = subscriptions.map((subscription) => receiveLoop({ subscription, connection, workerConfig, options, workerState }));
+    let loops;
+    if (workerConfig.delivery_mode === "jetstream") {
+      const consumers = await Promise.all(workerConfig.tags.map((tag) => getJetStreamJobConsumer({ connection, tag })));
+      loops = consumers.map((consumer) => jetStreamReceiveLoop({ consumer, connection, workerConfig, options, workerState }));
+    } else {
+      loops = workerConfig.tags.map((tag) => {
+        const subscription = connection.subscribe(`git-runner.jobs.${tag}`);
+        return receiveLoop({ subscription, connection, workerConfig, options, workerState });
+      });
+    }
     if (workerConfig.once) {
       await Promise.race(loops);
-      for (const subscription of subscriptions) {
-        subscription.unsubscribe();
-      }
       await connection.close();
     } else {
       await Promise.all(loops);
@@ -92,6 +98,7 @@ function mergeWorkerOptions(config, options) {
     workspace_root: options.workspaceRoot ?? config.workspace_root ?? ".git-runner/workspaces",
     job_store_root: options.jobStoreRoot ?? config.job_store_root ?? ".git-runner/jobs",
     cleanup: config.cleanup ?? { mode: "after_job" },
+    delivery_mode: options.deliveryMode ?? config.delivery_mode ?? "core",
     once: Boolean(options.once)
   };
 }
@@ -105,6 +112,9 @@ function validateWorkerStartup(workerConfig) {
   }
   if (!workerConfig.tags.length) {
     throw new CliError("worker must have at least one tag", EXIT_CODES.invalidUsage);
+  }
+  if (!["core", "jetstream"].includes(workerConfig.delivery_mode)) {
+    throw new CliError("worker delivery_mode must be core or jetstream", EXIT_CODES.invalidUsage);
   }
 }
 
@@ -124,6 +134,29 @@ async function receiveLoop({ subscription, connection, workerConfig, options, wo
     await handleJob({ jobSpec, connection, workerConfig, options, workerState });
     if (workerConfig.once) {
       return;
+    }
+  }
+}
+
+async function jetStreamReceiveLoop({ consumer, connection, workerConfig, options, workerState }) {
+  for (;;) {
+    const message = await consumer.next({ expires: 1000 });
+    if (!message) {
+      continue;
+    }
+    try {
+      const jobSpec = JSON.parse(textDecoder.decode(message.data));
+      if (canWriteJobScopedStatus(jobSpec.job_id)) {
+        await writeAndPublishStatus({ connection, options, workerConfig, jobSpec, status: "ACCEPTED", reason: null });
+      }
+      await handleJob({ jobSpec, connection, workerConfig, options, workerState });
+      message.ack();
+      if (workerConfig.once) {
+        return;
+      }
+    } catch (error) {
+      message.nak();
+      throw error;
     }
   }
 }

@@ -53,6 +53,14 @@ To flag an accepted job as stale after 30 seconds:
 node bin/git-runner.js status <job-id> --stale-after-sec 30
 ```
 
+For durable job delivery, start NATS with JetStream:
+
+```bash
+nats-server -js
+```
+
+Then pass `--jetstream` to both `submit` and `worker`. JetStream mode stores jobs in stream `GIT_RUNNER_JOBS`, so the worker can start after submit and still receive the job.
+
 ## 3. Initialize git-runner Config
 
 Create the default config:
@@ -138,6 +146,15 @@ node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
 ```
 
 With the guard disabled, `submit` uses publish-only delivery and NATS core will not retain the job for a worker that subscribes later.
+
+To use JetStream durable delivery instead, start NATS with `nats-server -js`, submit with `--jetstream`, and start a JetStream worker with the same routing tags:
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test" --jetstream
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+```
+
+Delivery is at-least-once. If a worker crashes before acknowledging a message, JetStream can redeliver it, so job commands should tolerate rerun.
 
 The worker will:
 

@@ -92,6 +92,9 @@ function parseArgs(argv) {
       case "--no-require-worker":
         options.requireWorker = false;
         break;
+      case "--jetstream":
+        options.deliveryMode = "jetstream";
+        break;
       case "--repo":
         options.repo = requireValue(argv, index, arg);
         index += 1;
@@ -233,13 +236,16 @@ async function commandInit(args, context) {
 
 async function commandSubmit(args, context) {
   if (args.help) {
-    return "git-runner submit --command <command> [--repo .] [--branch name] [--commit sha] [--dry-run] [--no-require-worker] [--json]\n";
+    return "git-runner submit --command <command> [--repo .] [--branch name] [--commit sha] [--dry-run] [--jetstream] [--no-require-worker] [--json]\n";
   }
   if (!args.command) {
     throw new CliError("missing required option: --command", EXIT_CODES.invalidUsage);
   }
   if (args.timeoutSec !== undefined && (!Number.isInteger(args.timeoutSec) || args.timeoutSec <= 0)) {
     throw new CliError("--timeout-sec must be a positive integer", EXIT_CODES.invalidUsage);
+  }
+  if (args.deliveryMode === "jetstream" && args.requireWorker === false) {
+    throw new CliError("--jetstream cannot be combined with --no-require-worker", EXIT_CODES.invalidUsage);
   }
 
   const { config } = await loadProjectConfig({
@@ -308,7 +314,8 @@ async function commandSubmit(args, context) {
       natsUrl,
       subject,
       jobSpec,
-      requireWorker: args.requireWorker !== false
+      requireWorker: args.requireWorker !== false,
+      deliveryMode: args.deliveryMode ?? "core"
     });
   } catch (error) {
     await removeJobFromStore({
@@ -349,7 +356,7 @@ async function commandStatus(args, context) {
 
 async function commandWorker(args, context) {
   if (args.help) {
-    return "git-runner worker --worker-id <id> --worker-key <key> [--tags default] [--allow-repo repo] [--allow-all-repos] [--once]\n";
+    return "git-runner worker --worker-id <id> --worker-key <key> [--tags default] [--allow-repo repo] [--allow-all-repos] [--jetstream] [--once]\n";
   }
   await runWorker({
     cwd: context.cwd,
@@ -363,6 +370,7 @@ async function commandWorker(args, context) {
     allowAllRepos: args.allowAllRepos,
     workspaceRoot: args.workspaceRoot,
     jobStoreRoot: args.jobStoreRoot,
+    deliveryMode: args.deliveryMode,
     once: args.once
   });
   return args.once ? "worker processed one job\n" : undefined;

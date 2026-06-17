@@ -1,14 +1,21 @@
 import { connect } from "@nats-io/transport-node";
 import { CliError, EXIT_CODES } from "./errors.js";
+import { publishJetStreamJob } from "./jetstream-jobs.js";
 
 const textEncoder = new TextEncoder();
 
-export async function publishJob({ natsUrl, subject, jobSpec, requireWorker = true }) {
+export async function publishJob({ natsUrl, subject, jobSpec, requireWorker = true, deliveryMode = "core" }) {
+  if (!["core", "jetstream"].includes(deliveryMode)) {
+    throw new CliError("deliveryMode must be core or jetstream", EXIT_CODES.invalidUsage);
+  }
+
   let connection;
   try {
     connection = await connect({ servers: natsUrl });
     const payload = textEncoder.encode(JSON.stringify(jobSpec));
-    if (requireWorker) {
+    if (deliveryMode === "jetstream") {
+      await publishJetStreamJob({ connection, subject, payload, jobId: jobSpec.job_id });
+    } else if (requireWorker) {
       await dispatchToReadyWorker({ connection, natsUrl, subject, payload });
     } else {
       connection.publish(subject, payload);
