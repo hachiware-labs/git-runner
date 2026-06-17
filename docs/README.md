@@ -6,6 +6,8 @@
 
 - [git-runner-requirements.md](git-runner-requirements.md): 初期の要件メモ。背景と要求の原文として残す。
 - [prd.md](prd.md): Product Requirements Document。何を作るか、誰のためのものか、MVP の境界を定義する。
+- [tutorial.md](tutorial.md): English tutorial。local NATS で submit、worker、inspection を通す。
+- [tutorial_ja.md](tutorial_ja.md): 日本語 tutorial。local NATS で submit、worker、inspection を通す。
 - [adr/](adr/): Architecture Decision Record。重要な設計判断と理由を記録する。
 - [specs/](specs/): 実装仕様。CLI、Job Spec、worker、status、result、security などの契約を定義する。
 
