@@ -30,19 +30,34 @@ export async function runWorker(options) {
     throw new CliError(`worker NATS connect failed at ${natsUrl}: ${error.message}`, EXIT_CODES.natsFailure);
   }
 
+  const workerState = {
+    status: "idle",
+    current_job_id: null
+  };
   await publish(connection, `git-runner.workers.${workerConfig.worker_id}.heartbeat`, {
     schema_version: 1,
     worker_id: workerConfig.worker_id,
-    status: "idle",
+    status: workerState.status,
     tags: workerConfig.tags,
     allow_all_repos: workerConfig.allow_all_repos,
-    current_job_id: null,
+    current_job_id: workerState.current_job_id,
     timestamp: new Date().toISOString()
   });
+  const heartbeat = setInterval(() => {
+    publish(connection, `git-runner.workers.${workerConfig.worker_id}.heartbeat`, {
+      schema_version: 1,
+      worker_id: workerConfig.worker_id,
+      status: workerState.status,
+      tags: workerConfig.tags,
+      allow_all_repos: workerConfig.allow_all_repos,
+      current_job_id: workerState.current_job_id,
+      timestamp: new Date().toISOString()
+    });
+  }, 10000);
 
   try {
     const subscriptions = workerConfig.tags.map((tag) => connection.subscribe(`git-runner.jobs.${tag}`));
-    const loops = subscriptions.map((subscription) => receiveLoop({ subscription, connection, workerConfig, options }));
+    const loops = subscriptions.map((subscription) => receiveLoop({ subscription, connection, workerConfig, options, workerState }));
     if (workerConfig.once) {
       await Promise.race(loops);
       for (const subscription of subscriptions) {
@@ -53,6 +68,7 @@ export async function runWorker(options) {
       await Promise.all(loops);
     }
   } finally {
+    clearInterval(heartbeat);
     if (connection && !connection.isClosed()) {
       await connection.close();
     }
@@ -92,17 +108,17 @@ function validateWorkerStartup(workerConfig) {
   }
 }
 
-async function receiveLoop({ subscription, connection, workerConfig, options }) {
+async function receiveLoop({ subscription, connection, workerConfig, options, workerState }) {
   for await (const message of subscription) {
     const jobSpec = JSON.parse(textDecoder.decode(message.data));
-    await handleJob({ jobSpec, connection, workerConfig, options });
+    await handleJob({ jobSpec, connection, workerConfig, options, workerState });
     if (workerConfig.once) {
       return;
     }
   }
 }
 
-async function handleJob({ jobSpec, connection, workerConfig, options }) {
+async function handleJob({ jobSpec, connection, workerConfig, options, workerState }) {
   const startedAt = new Date().toISOString();
   let terminal;
   let executorSummary = null;
@@ -110,6 +126,8 @@ async function handleJob({ jobSpec, connection, workerConfig, options }) {
   let reason = null;
   let artifacts = [];
   let cancelSubscription = null;
+  workerState.status = "running";
+  workerState.current_job_id = jobSpec.job_id ?? null;
 
   try {
     validateJob(jobSpec);
@@ -148,6 +166,8 @@ async function handleJob({ jobSpec, connection, workerConfig, options }) {
       stdoutPath: path.join(sourceOutputDir, "stdout.log"),
       stderrPath: path.join(sourceOutputDir, "stderr.log")
     }).catch(() => {});
+    await publishLogFile({ connection, jobId: jobSpec.job_id, stream: "stdout", filePath: path.join(sourceOutputDir, "stdout.log") }).catch(() => {});
+    await publishLogFile({ connection, jobId: jobSpec.job_id, stream: "stderr", filePath: path.join(sourceOutputDir, "stderr.log") }).catch(() => {});
   }
 
   const summary = buildResultSummary({
@@ -174,6 +194,8 @@ async function handleJob({ jobSpec, connection, workerConfig, options }) {
   if (workspacePath && workerConfig.cleanup?.mode !== "never") {
     await rm(workspacePath, { recursive: true, force: true });
   }
+  workerState.status = "idle";
+  workerState.current_job_id = null;
 }
 
 function validateJob(jobSpec) {
@@ -185,12 +207,29 @@ function validateJob(jobSpec) {
   if (jobSpec.entry?.type !== "command" || !jobSpec.entry.command) failJob("job_invalid", "entry command required");
   if (!jobSpec.params || Array.isArray(jobSpec.params) || typeof jobSpec.params !== "object") failJob("job_invalid", "params must be object");
   if (jobSpec.param_passing?.mode !== "json_file") failJob("job_invalid", "param_passing.mode must be json_file");
+  validateRelativeContainedPath(jobSpec.working_dir, "working_dir");
+  validateRelativeContainedPath(jobSpec.param_passing.path, "param_passing.path");
+  validateRelativeContainedPath(jobSpec.outputs?.result?.path, "outputs.result.path");
+  if (!["none", "json_schema"].includes(jobSpec.outputs?.result?.schema?.type)) failJob("job_invalid", "outputs.result.schema.type unsupported");
+  if (jobSpec.outputs.result.schema.type === "json_schema") validateRelativeContainedPath(jobSpec.outputs.result.schema.file, "outputs.result.schema.file");
+  for (const artifact of jobSpec.outputs?.artifacts ?? []) {
+    validateRelativeContainedPath(artifact.path, "artifact.path");
+  }
   if (jobSpec.runtime?.type !== "host") failJob("job_invalid", "runtime.type must be host");
   if (!Number.isInteger(jobSpec.execution?.timeout_sec) || jobSpec.execution.timeout_sec <= 0) failJob("job_invalid", "timeout_sec must be positive");
   if (!Number.isInteger(jobSpec.execution?.max_stdout_bytes) || jobSpec.execution.max_stdout_bytes <= 0) failJob("job_invalid", "max_stdout_bytes must be positive");
   if (!Number.isInteger(jobSpec.execution?.max_stderr_bytes) || jobSpec.execution.max_stderr_bytes <= 0) failJob("job_invalid", "max_stderr_bytes must be positive");
   for (const setup of jobSpec.setup ?? []) {
     if (setup.type !== "command" || !setup.command) failJob("job_invalid", "setup command invalid");
+  }
+}
+
+function validateRelativeContainedPath(inputPath, label) {
+  if (!inputPath || typeof inputPath !== "string") failJob("job_invalid", `${label} required`);
+  if (path.isAbsolute(inputPath)) return;
+  const normalized = path.normalize(inputPath);
+  if (normalized === ".." || normalized.startsWith(`..${path.sep}`)) {
+    failJob("job_invalid", `${label} escapes repository root`);
   }
 }
 
@@ -405,6 +444,20 @@ async function writeAndPublishStatus({ connection, options, workerConfig, jobSpe
 
 async function publish(connection, subject, payload) {
   connection.publish(subject, textEncoder.encode(JSON.stringify(payload)));
+}
+
+async function publishLogFile({ connection, jobId, stream, filePath }) {
+  const data = await readFile(filePath, "utf8");
+  await publish(connection, `git-runner.logs.${jobId}`, {
+    schema_version: 1,
+    event_type: "log",
+    job_id: jobId,
+    stream,
+    data,
+    encoding: "utf-8",
+    offset: 0,
+    timestamp: new Date().toISOString()
+  });
 }
 
 function jobStoreBase(options, workerConfig) {
