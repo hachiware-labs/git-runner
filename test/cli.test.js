@@ -120,6 +120,27 @@ test("status, logs, and get read from local job store", async () => {
   assert.equal(acceptedStatus.stale_after_sec, 1);
   assert.ok(acceptedStatus.age_sec > 0);
 
+  const lockDir = path.join(jobDir, "execution.lock");
+  await mkdir(lockDir);
+  await writeFile(path.join(lockDir, "owner.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_001",
+    worker_id: "local-001",
+    pid: 123,
+    acquired_at: "2000-01-01T00:00:00.000Z"
+  })}\n`);
+  const locked = await runCli(["status", "job_001", "--json", "--stale-after-sec", "1"], cwd);
+  assert.equal(locked.exitCode, EXIT_CODES.success);
+  const lockedStatus = JSON.parse(locked.stdout);
+  assert.equal(lockedStatus.execution_lock.present, true);
+  assert.equal(lockedStatus.execution_lock.worker_id, "local-001");
+  assert.equal(lockedStatus.execution_lock.stale, true);
+
+  const lockedHuman = await runCli(["status", "job_001", "--stale-after-sec", "1"], cwd);
+  assert.equal(lockedHuman.exitCode, EXIT_CODES.success);
+  assert.match(lockedHuman.stdout, /execution_lock: present/);
+  assert.match(lockedHuman.stdout, /execution_lock_stale: true/);
+
   const logs = await runCli(["logs", "job_001"], cwd);
   assert.equal(logs.exitCode, EXIT_CODES.success);
   assert.equal(logs.stdout, "hello\nwarn\n");

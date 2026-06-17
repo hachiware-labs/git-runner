@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadProjectConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES } from "./errors.js";
@@ -56,6 +56,48 @@ export async function readJobText({ cwd, configPath, jobStoreRoot, env, jobId, f
       throw new CliError(`job log not found in local job store: ${jobId} (${filePath})`, EXIT_CODES.jobStoreFailure);
     }
     throw new CliError(`cannot read job log ${filePath}: ${error.message}`, EXIT_CODES.jobStoreFailure);
+  }
+}
+
+export async function readJobExecutionLock({ cwd, configPath, jobStoreRoot, env, jobId }) {
+  const storeRoot = await resolveJobStore({ cwd, configPath, jobStoreRoot, env });
+  const lockDir = resolveJobPath(storeRoot, jobId, "execution.lock");
+  const ownerPath = path.join(lockDir, "owner.json");
+
+  try {
+    const owner = JSON.parse(await readFile(ownerPath, "utf8"));
+    return {
+      present: true,
+      path: lockDir,
+      owner
+    };
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      if (error instanceof SyntaxError) {
+        return {
+          present: true,
+          path: lockDir,
+          owner: null,
+          error: `invalid owner.json: ${error.message}`
+        };
+      }
+      throw new CliError(`cannot read job execution lock ${ownerPath}: ${error.message}`, EXIT_CODES.jobStoreFailure);
+    }
+  }
+
+  try {
+    await stat(lockDir);
+    return {
+      present: true,
+      path: lockDir,
+      owner: null,
+      error: "owner.json missing"
+    };
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw new CliError(`cannot inspect job execution lock ${lockDir}: ${error.message}`, EXIT_CODES.jobStoreFailure);
   }
 }
 

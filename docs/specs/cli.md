@@ -231,7 +231,18 @@ If latest status is `ACCEPTED`, `status` computes diagnostic stale metadata from
 - `age_sec`: accepted status age in seconds.
 - `stale_after_sec`: threshold used for the calculation.
 
-The default `--stale-after-sec` value is `60`. Stale detection does not mutate job status and does not retry the job.
+If `.git-runner/jobs/<job-id>/execution.lock` exists, `status` also returns `execution_lock` diagnostics:
+
+- `present`: `true`
+- `worker_id`: worker that acquired the lock, when known
+- `pid`: worker process id, when known
+- `acquired_at`: lock acquisition timestamp, when known
+- `age_sec`: lock age in seconds, when `acquired_at` is parseable
+- `stale`: `true` when lock age is greater than or equal to `--stale-after-sec`
+- `stale_after_sec`: threshold used for the calculation
+- `error`: lock metadata read error, when owner metadata is missing or invalid
+
+The default `--stale-after-sec` value is `60`. Stale detection does not mutate job status, release locks, or retry the job.
 
 Human output:
 
@@ -255,6 +266,12 @@ commit: <sha>
 stale: false
 age_sec: 3
 stale_after_sec: 60
+execution_lock: present
+execution_lock_worker_id: local-001
+execution_lock_acquired_at: 2026-06-17T00:00:00.000Z
+execution_lock_age_sec: 3
+execution_lock_stale: false
+execution_lock_stale_after_sec: 60
 ```
 
 ## 7. `git-runner logs`

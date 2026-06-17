@@ -4,7 +4,7 @@ import { initProjectConfig, loadProjectConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES, formatError } from "./errors.js";
 import { commitAndPush, inspectRepository, isWorkingTreeDirty, resolveExecutionCommit } from "./git.js";
 import { buildJobSpec, createJobId, subjectForJob } from "./job-spec.js";
-import { readJobJson, readJobText, removeJobFromStore, writeSubmitJob } from "./job-store.js";
+import { readJobExecutionLock, readJobJson, readJobText, removeJobFromStore, writeSubmitJob } from "./job-store.js";
 import { publishJob } from "./nats-publisher.js";
 import { runWorker } from "./worker.js";
 
@@ -347,7 +347,15 @@ async function commandStatus(args, context) {
     jobId,
     fileName: "status.json"
   });
+  const executionLock = await readJobExecutionLock({
+    cwd: context.cwd,
+    configPath: args.configPath,
+    jobStoreRoot: args.jobStoreRoot,
+    env: context.env,
+    jobId
+  });
   const status = annotateStatus(result.value, {
+    executionLock,
     staleAfterSec: args.staleAfterSec ?? DEFAULT_ACCEPTED_STALE_AFTER_SEC
   });
 
@@ -551,24 +559,66 @@ function formatStatus(status) {
   if (status.stale_after_sec !== undefined) {
     lines.push(`stale_after_sec: ${status.stale_after_sec}`);
   }
+  if (status.execution_lock?.present) {
+    lines.push("execution_lock: present");
+    if (status.execution_lock.worker_id) {
+      lines.push(`execution_lock_worker_id: ${status.execution_lock.worker_id}`);
+    }
+    if (status.execution_lock.acquired_at) {
+      lines.push(`execution_lock_acquired_at: ${status.execution_lock.acquired_at}`);
+    }
+    if (status.execution_lock.age_sec !== undefined) {
+      lines.push(`execution_lock_age_sec: ${status.execution_lock.age_sec}`);
+    }
+    if (typeof status.execution_lock.stale === "boolean") {
+      lines.push(`execution_lock_stale: ${status.execution_lock.stale}`);
+    }
+    if (status.execution_lock.stale_after_sec !== undefined) {
+      lines.push(`execution_lock_stale_after_sec: ${status.execution_lock.stale_after_sec}`);
+    }
+    if (status.execution_lock.error) {
+      lines.push(`execution_lock_error: ${status.execution_lock.error}`);
+    }
+  }
 
   return `${lines.join("\n")}\n`;
 }
 
-function annotateStatus(status, { staleAfterSec }) {
-  if (status.status !== "ACCEPTED" || !status.timestamp) {
-    return status;
+function annotateStatus(status, { executionLock, staleAfterSec }) {
+  let annotated = status;
+  if (status.status === "ACCEPTED" && status.timestamp) {
+    const timestampMs = Date.parse(status.timestamp);
+    if (Number.isFinite(timestampMs)) {
+      const ageSec = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
+      annotated = {
+        ...annotated,
+        stale: ageSec >= staleAfterSec,
+        age_sec: ageSec,
+        stale_after_sec: staleAfterSec
+      };
+    }
   }
-  const timestampMs = Date.parse(status.timestamp);
-  if (!Number.isFinite(timestampMs)) {
-    return status;
+  if (!executionLock?.present) {
+    return annotated;
   }
-  const ageSec = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
+
+  const lock = {
+    present: true,
+    worker_id: executionLock.owner?.worker_id ?? null,
+    pid: executionLock.owner?.pid ?? null,
+    acquired_at: executionLock.owner?.acquired_at ?? null,
+    stale_after_sec: staleAfterSec,
+    ...(executionLock.error ? { error: executionLock.error } : {})
+  };
+  const lockTimestampMs = Date.parse(lock.acquired_at);
+  if (Number.isFinite(lockTimestampMs)) {
+    lock.age_sec = Math.max(0, Math.floor((Date.now() - lockTimestampMs) / 1000));
+    lock.stale = lock.age_sec >= staleAfterSec;
+  }
+
   return {
-    ...status,
-    stale: ageSec >= staleAfterSec,
-    age_sec: ageSec,
-    stale_after_sec: staleAfterSec
+    ...annotated,
+    execution_lock: lock
   };
 }
 
