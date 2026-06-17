@@ -143,6 +143,6 @@ All worker-side Git failures below map to `git_checkout_failed`.
 
 MVP status model includes `CANCELLED`. MVP cancellation is event-driven through `git-runner.cancels.<job-id>` and does not require a user-facing CLI command.
 
-- pending job cancellation maps to `CANCELLED` with `cancelled`.
-- running job cancellation requires supervisor to terminate executor.
+- running job cancellation maps to `CANCELLED` with `cancelled` and requires supervisor to terminate executor.
+- pending or accepted job cancellation is not guaranteed in MVP because cancel subjects are core NATS messages and are not durable.
 - cancellation cleanup follows the same artifact/log preservation rules as failure.

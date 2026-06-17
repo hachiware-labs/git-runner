@@ -45,6 +45,8 @@ If your NATS server listens somewhere else, pass `--nats-url` to both `submit` a
 
 Important: the MVP uses NATS core request/reply for default job dispatch, not a durable queue. By default, `submit` requires a matching worker to accept the job message before returning. If no worker accepts it, submit fails and does not leave a pending job.
 
+If a worker accepts a job and then crashes before validation or execution, `status <job-id>` may remain `ACCEPTED`. In the MVP this is diagnostic only; automatic retry is not performed.
+
 ## 3. Initialize git-runner Config
 
 Create the default config:

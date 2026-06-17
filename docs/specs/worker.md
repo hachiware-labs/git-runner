@@ -54,21 +54,22 @@ git-runner.jobs.<tag>
 For each job:
 
 1. Parse Job Spec.
-2. Respond to request/reply dispatch when a reply subject is present.
-3. Validate schema.
-4. Validate worker policy.
-5. Publish `RUNNING` status only after job is accepted.
-6. Prepare workspace.
-7. Fetch repository.
-8. Checkout `source.commit` using detached HEAD.
-9. Spawn executor process.
-10. Monitor timeout and process exit.
-11. Collect executor result.
-12. Validate output result if schema is configured.
-13. Collect artifacts.
-14. Publish terminal status.
-15. Cleanup workspace according to config.
-16. Return to idle state.
+2. Write and publish `ACCEPTED` status when `job_id` is valid.
+3. Respond to request/reply dispatch when a reply subject is present.
+4. Validate schema.
+5. Validate worker policy.
+6. Publish `RUNNING` status only after job is accepted and policy allows execution.
+7. Prepare workspace.
+8. Fetch repository.
+9. Checkout `source.commit` using detached HEAD.
+10. Spawn executor process.
+11. Monitor timeout and process exit.
+12. Collect executor result.
+13. Validate output result if schema is configured.
+14. Collect artifacts.
+15. Publish terminal status.
+16. Cleanup workspace according to config.
+17. Return to idle state.
 
 ## 5. Git Workspace
 

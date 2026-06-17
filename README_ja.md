@@ -108,6 +108,8 @@ node bin/git-runner.js get <job-id> --json
 
 重要: MVP の default job dispatch は NATS core request/reply を使っており、durable queue ではありません。default では、`submit` は一致する worker が job message を accept したことを確認してから戻ります。worker が accept しない場合、pending job を残さずに失敗します。この guard を意図的に外す場合だけ `--no-require-worker` を使います。
 
+worker が job を accept した後、validation や execution の前に crash した場合、latest status が `ACCEPTED` のまま残ることがあります。これは job が worker に届いたが、terminal result は記録されていない状態を意味します。
+
 ## よく使う command
 
 default config を作成:

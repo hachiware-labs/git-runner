@@ -100,6 +100,17 @@ test("status, logs, and get read from local job store", async () => {
   assert.match(status.stdout, /status: COMPLETED/);
   assert.match(status.stdout, /commit: abc123/);
 
+  await writeFile(path.join(jobDir, "status.json"), `${JSON.stringify({
+    job_id: "job_001",
+    status: "ACCEPTED",
+    reason: null,
+    worker_id: "local-001",
+    source: { commit: "abc123" }
+  })}\n`);
+  const accepted = await runCli(["status", "job_001"], cwd);
+  assert.equal(accepted.exitCode, EXIT_CODES.success);
+  assert.match(accepted.stdout, /status: ACCEPTED/);
+
   const logs = await runCli(["logs", "job_001"], cwd);
   assert.equal(logs.exitCode, EXIT_CODES.success);
   assert.equal(logs.stdout, "hello\nwarn\n");

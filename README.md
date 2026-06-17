@@ -108,6 +108,8 @@ For a complete walkthrough, see [docs/tutorial.md](docs/tutorial.md).
 
 Important: the MVP uses NATS core request/reply for default job dispatch, not a durable queue. By default, `submit` requires a matching worker to accept the job message before returning. If no worker accepts it, submit fails and does not leave a pending job. Use `--no-require-worker` only when you intentionally want to bypass this guard.
 
+If a worker accepts a job and then crashes before validation or execution, the latest status may remain `ACCEPTED`. That indicates the job was delivered to a worker but no terminal result was recorded.
+
 ## Common Commands
 
 Create default config:

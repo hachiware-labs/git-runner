@@ -111,6 +111,9 @@ function validateWorkerStartup(workerConfig) {
 async function receiveLoop({ subscription, connection, workerConfig, options, workerState }) {
   for await (const message of subscription) {
     const jobSpec = JSON.parse(textDecoder.decode(message.data));
+    if (canWriteJobScopedStatus(jobSpec.job_id)) {
+      await writeAndPublishStatus({ connection, options, workerConfig, jobSpec, status: "ACCEPTED", reason: null });
+    }
     message.respond(textEncoder.encode(JSON.stringify({
       schema_version: 1,
       event_type: "accepted",
@@ -123,6 +126,10 @@ async function receiveLoop({ subscription, connection, workerConfig, options, wo
       return;
     }
   }
+}
+
+function canWriteJobScopedStatus(jobId) {
+  return Boolean(jobId) && !jobId.includes("/") && !jobId.includes("\\") && jobId !== "." && jobId !== "..";
 }
 
 async function handleJob({ jobSpec, connection, workerConfig, options, workerState }) {

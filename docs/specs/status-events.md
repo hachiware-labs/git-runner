@@ -6,6 +6,7 @@ MVP statuses:
 
 ```text
 PENDING
+ACCEPTED
 RUNNING
 COMPLETED
 FAILED
@@ -123,17 +124,18 @@ NATS events are used to transport updates. MVP job delivery is not durable. By d
 Allowed transitions:
 
 ```text
-PENDING -> RUNNING
+PENDING -> ACCEPTED
+ACCEPTED -> RUNNING
+ACCEPTED -> FAILED
 PENDING -> FAILED
-PENDING -> CANCELLED
 RUNNING -> COMPLETED
 RUNNING -> FAILED
 RUNNING -> CANCELLED
 ```
 
-Worker subscribes to `git-runner.cancels.<job-id>` after accepting a job. A cancellation message moves a pending or running job to `CANCELLED` with reason `cancelled`. If the executor is running, supervisor terminates it before publishing terminal status.
+Worker subscribes to `git-runner.cancels.<job-id>` after the job reaches `RUNNING`. A cancellation message moves a running job to `CANCELLED` with reason `cancelled`. If the executor is running, supervisor terminates it before publishing terminal status.
 
-Submitter writes `PENDING` to local job store when job is created. Worker publishes `RUNNING` after accepting and validating the job.
+Submitter writes `PENDING` to local job store when job is created. Worker writes and publishes `ACCEPTED` before responding to request/reply dispatch. If a worker crashes after acceptance but before validation or execution, the latest status can remain `ACCEPTED`; this means the job was delivered to a worker but no terminal outcome was recorded. Worker publishes `RUNNING` after validating schema and policy.
 
 ## 6. Heartbeat
 

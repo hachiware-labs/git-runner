@@ -45,6 +45,8 @@ NATS server が別 URL の場合は、`submit` と `worker` の両方に `--nats
 
 重要: MVP の default job dispatch は NATS core request/reply を使っており、durable queue ではありません。default では、`submit` は一致する worker が job message を accept したことを確認してから戻ります。worker が accept しない場合、pending job を残さずに失敗します。
 
+worker が job を accept した後、validation や execution の前に crash した場合、`status <job-id>` が `ACCEPTED` のまま残ることがあります。MVP では診断用の状態で、自動 retry は行いません。
+
 ## 3. git-runner config を初期化する
 
 default config を作成します。

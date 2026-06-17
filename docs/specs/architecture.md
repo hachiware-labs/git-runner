@@ -92,15 +92,15 @@ Submitter never executes the job command.
 3. Worker connects to NATS.
 4. Worker subscribes to job subjects for configured tags.
 5. Worker receives a Job Spec.
-6. Worker responds to request/reply dispatch when a reply subject is present.
-7. Worker validates schema and policy.
-8. Worker writes accepted job metadata to local job store.
+6. Worker writes and publishes `ACCEPTED` when `job_id` is valid.
+7. Worker responds to request/reply dispatch when a reply subject is present.
+8. Worker validates schema and policy.
 9. Worker publishes `RUNNING`.
 10. Worker prepares per-job workspace.
 11. Worker fetches repository and checks out `source.commit` as detached HEAD.
 12. Worker starts executor process.
 13. Worker enforces timeout.
-14. Worker listens for cancellation on `git-runner.cancels.<job-id>` while job is active.
+14. Worker listens for cancellation on `git-runner.cancels.<job-id>` while the executor is running.
 15. Worker maps executor result to terminal status and reason.
 16. Worker validates result file when required.
 17. Worker collects artifacts.
@@ -167,6 +167,7 @@ Out of MVP scope:
 | --- | --- | --- |
 | invalid CLI input | CLI | fail before publishing a job |
 | NATS dispatch/connect failure | CLI or worker | fail command or worker startup; no fake success |
+| worker crash after dispatch acceptance | worker supervisor boundary | latest local status may remain `ACCEPTED`; no automatic retry in MVP |
 | invalid Job Spec | worker supervisor | terminal `FAILED` with `job_invalid` |
 | worker policy denial | worker supervisor | terminal `FAILED` with `worker_policy_denied` |
 | clone/fetch/checkout failure | worker supervisor | terminal `FAILED` with `git_checkout_failed` |
