@@ -242,7 +242,7 @@ If `.git-runner/jobs/<job-id>/execution.lock` exists, `status` also returns `exe
 - `stale_after_sec`: threshold used for the calculation
 - `error`: lock metadata read error, when owner metadata is missing or invalid
 
-The default `--stale-after-sec` value is `60`. Stale detection does not mutate job status, release locks, or retry the job.
+The default `--stale-after-sec` value is `60`. Stale detection does not mutate job status, release locks, or retry the job. Recovery procedure is defined in [recovery.md](recovery.md).
 
 Human output:
 

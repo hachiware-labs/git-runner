@@ -14,6 +14,7 @@
 - [error-catalog.md](error-catalog.md): エラー条件、reason、発生箇所、retry 可否、CLI exit code
 - [result-artifacts.md](result-artifacts.md): stdout/stderr/result/artifacts の保存と取得
 - [security-policy.md](security-policy.md): worker key、allowed tags/repositories、実行 policy
+- [recovery.md](recovery.md): stale execution lock の診断と手動復旧手順
 
 ## 実装ルール
 

@@ -124,6 +124,7 @@ In JetStream mode, `submit` stores the job in stream `GIT_RUNNER_JOBS`; a matchi
 If a worker accepts a job and then crashes before validation or execution, the latest status may remain `ACCEPTED`. That indicates the job was delivered to a worker but no terminal result was recorded.
 
 Use `status --stale-after-sec <seconds>` to detect an `ACCEPTED` job or `execution.lock` that has not advanced. This is diagnostic only; the MVP does not retry stale jobs or release stale locks automatically.
+For manual stale lock recovery rules, see [docs/specs/recovery.md](docs/specs/recovery.md).
 
 ## Common Commands
 

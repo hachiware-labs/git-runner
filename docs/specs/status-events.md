@@ -152,7 +152,7 @@ Worker subscribes to `git-runner.cancels.<job-id>` after the job reaches `RUNNIN
 
 Submitter writes `PENDING` to local job store when job is created. In default core mode, worker writes and publishes `ACCEPTED` after acquiring the execution lock and before responding to request/reply dispatch. In JetStream mode, worker writes and publishes `ACCEPTED` after pulling the message from its durable consumer and acquiring the execution lock. If a worker crashes after acceptance but before validation or execution, the latest status can remain `ACCEPTED`; this means the job was delivered to a worker but no terminal outcome was recorded. Worker publishes `RUNNING` after validating schema and policy.
 
-Inspection commands may compute stale diagnostics for `ACCEPTED` and for an existing `execution.lock` without changing the stored status. MVP stale detection is read-only: it does not release locks and does not retry jobs.
+Inspection commands may compute stale diagnostics for `ACCEPTED` and for an existing `execution.lock` without changing the stored status. MVP stale detection is read-only: it does not release locks and does not retry jobs. Manual recovery rules are defined in [recovery.md](recovery.md).
 
 ## 6. Heartbeat
 

@@ -10,6 +10,7 @@
 - [tutorial_ja.md](tutorial_ja.md): 日本語 tutorial。local NATS で submit、worker、inspection を通す。
 - [adr/](adr/): Architecture Decision Record。重要な設計判断と理由を記録する。
 - [specs/](specs/): 実装仕様。CLI、Job Spec、worker、status、result、security などの契約を定義する。
+- [specs/recovery.md](specs/recovery.md): stale execution lock の診断と手動復旧手順を定義する。
 
 ## 実装時の優先順位
 
