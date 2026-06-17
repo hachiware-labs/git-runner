@@ -219,3 +219,13 @@ Worker must reject a job as `FAILED` with `worker_policy_denied` before executio
 - job-controlled absolute paths are provided.
 
 The authoritative validation and policy mapping is defined in [error-catalog.md](error-catalog.md).
+
+## 5. Local Run Compatibility
+
+`git-runner local run` consumes Job Spec schema version `1`, but accepts a small compatibility surface for Research Booster local-runner fixtures:
+
+- `setup` may contain strings, which are normalized to `{ "type": "command", "command": <string> }`.
+- `worker.routing_tag` may be used instead of `worker.tags[0]`.
+- missing `runtime` is treated as `{ "type": "host" }`.
+
+Distributed workers should continue to receive canonical Job Specs with command setup objects, `worker.tags`, and explicit host runtime. The local compatibility rules are defined in [local-run.md](local-run.md).

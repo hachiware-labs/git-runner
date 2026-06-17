@@ -230,4 +230,6 @@ The test suite includes local CLI tests plus NATS-backed integration tests when 
 - [Architecture spec](docs/specs/architecture.md)
 - [CLI spec](docs/specs/cli.md)
 - [Error catalog](docs/specs/error-catalog.md)
+- [Local run spec](docs/specs/local-run.md)
+- [Result Bundle spec](docs/specs/result-bundle.md)
 - [ADR index](docs/adr/README.md)

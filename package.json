@@ -16,6 +16,7 @@
   "files": [
     "README_ja.md",
     "bin/",
+    "examples/",
     "src/",
     "docs/"
   ],

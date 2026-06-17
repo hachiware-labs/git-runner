@@ -1,0 +1,40 @@
+{
+  "schema_version": "git-runner.local-runner-acceptance.v1",
+  "description": "Acceptance fixture for git-runner local run producing a Research Booster importable result bundle.",
+  "workspace": ".",
+  "job": "examples/research-booster-local-runner/job.json",
+  "schema_setup": {
+    "command": "research-booster result schema --write schemas/research-booster.v1.schema.json",
+    "creates": "schemas/research-booster.v1.schema.json"
+  },
+  "command_under_test": {
+    "command": "git-runner local run examples/research-booster-local-runner/job.json --bundle .git-runner/result-bundle.json",
+    "bundle": ".git-runner/result-bundle.json",
+    "expected_exit_code": 0
+  },
+  "expected_bundle": {
+    "schema_version": "git-runner.result-bundle.v1",
+    "status": "COMPLETED",
+    "reason": null,
+    "job_id": "job_001",
+    "worker.routing_tag": "default",
+    "outputs.result.value.schema_version": "research-booster.v1",
+    "outputs.result.value.status": "completed",
+    "outputs.result.value.metrics.judge_score": 0.82,
+    "outputs.result.value.evaluation_context.eval_suite_id": "eval_qa_rag_v2",
+    "outputs.artifacts[0].name": "evaluation_report"
+  },
+  "research_booster_import": {
+    "command": "research-booster run import-git-runner-bundle .git-runner/result-bundle.json --id run_001 --experiment-id exp_001",
+    "creates": ".research-booster/runs/run_001.json"
+  },
+  "expected_research_booster_run": {
+    "run_id": "run_001",
+    "experiment_id": "exp_001",
+    "variant": "score_normalization_v1",
+    "git_runner.job_id": "job_001",
+    "git_runner.status": "COMPLETED",
+    "params.normalization": "zscore",
+    "result.metrics.judge_score": 0.82
+  }
+}

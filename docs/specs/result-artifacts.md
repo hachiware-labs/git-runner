@@ -88,6 +88,8 @@ Terminal result shape:
 }
 ```
 
+Result Summary is the local job store terminal metadata. Portable terminal snapshots for Research Booster/Codex import use [result-bundle.md](result-bundle.md).
+
 ## 5. Artifacts
 
 Artifact config:
