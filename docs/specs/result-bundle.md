@@ -6,6 +6,8 @@ Result Bundle is a portable terminal snapshot of a git-runner job. It lets Resea
 
 The local job store remains the execution-time source of truth. A Result Bundle is produced only for terminal jobs or by `git-runner local run` after local execution reaches a terminal status.
 
+The machine-readable JSON Schema is maintained at [../../src/schemas/git-runner.result-bundle.v1.schema.json](../../src/schemas/git-runner.result-bundle.v1.schema.json). Producers should validate bundles before writing them.
+
 ## 2. When To Produce
 
 Result Bundle producers:

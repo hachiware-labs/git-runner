@@ -1,0 +1,227 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://research-booster.local/schemas/git-runner.result-bundle.v1.schema.json",
+  "title": "git-runner Result Bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "job_id",
+    "status",
+    "reason",
+    "job",
+    "source",
+    "worker",
+    "timing",
+    "execution",
+    "outputs",
+    "error"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "git-runner.result-bundle.v1"
+    },
+    "job_id": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "enum": ["COMPLETED", "FAILED", "CANCELLED"]
+    },
+    "reason": {
+      "type": ["string", "null"]
+    },
+    "job": {
+      "type": "object"
+    },
+    "source": {
+      "type": "object"
+    },
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["worker_id", "routing_tag"],
+      "properties": {
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "routing_tag": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["submitted_at", "started_at", "finished_at", "duration_ms"],
+      "properties": {
+        "submitted_at": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "finished_at": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_code", "signal", "timed_out", "commands"],
+      "properties": {
+        "exit_code": {
+          "type": "integer"
+        },
+        "signal": {
+          "type": ["string", "null"]
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "failed_stage": {
+          "type": ["string", "null"],
+          "enum": ["setup", "entry", null]
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stdout", "stderr", "result", "artifacts"],
+      "properties": {
+        "stdout": {
+          "$ref": "#/definitions/logOutput"
+        },
+        "stderr": {
+          "$ref": "#/definitions/logOutput"
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema", "file", "value", "warnings"],
+          "properties": {
+            "path": {
+              "type": ["string", "null"]
+            },
+            "schema": {
+              "type": "object"
+            },
+            "file": {
+              "type": ["string", "null"]
+            },
+            "value": {},
+            "warnings": {
+              "type": "array"
+            }
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "required", "file", "bytes", "missing"],
+            "properties": {
+              "name": {
+                "type": ["string", "null"]
+              },
+              "path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": ["string", "null"]
+              },
+              "media_type": {
+                "type": ["string", "null"]
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "file": {
+                "type": ["string", "null"]
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "missing": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reason", "message", "retryable", "emitted_by", "details"],
+          "properties": {
+            "status": {
+              "enum": ["FAILED", "CANCELLED"]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "emitted_by": {
+              "const": "git-runner local run"
+            },
+            "details": {
+              "type": "array"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "logOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "bytes", "truncated"],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

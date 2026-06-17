@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CliError, EXIT_CODES } from "./errors.js";
 import { resolveInside } from "./path-utils.js";
+import { assertResultBundle } from "./result-bundle-validator.js";
 
 const DEFAULT_BUNDLE_PATH = ".git-runner/result-bundle.json";
 const DEFAULT_WORKER_ID = "local-001";
@@ -240,7 +241,7 @@ async function collectArtifacts({ jobSpec, workspacePath }) {
   const artifacts = [];
   for (const artifact of jobSpec.outputs?.artifacts ?? []) {
     const metadata = {
-      name: artifact.name,
+      name: artifact.name ?? null,
       path: artifact.path,
       kind: artifact.kind ?? null,
       media_type: artifact.media_type ?? null,
@@ -379,6 +380,7 @@ function emptyExecutorSummary(message) {
 }
 
 async function writeBundle(bundlePath, bundle) {
+  assertResultBundle(bundle);
   await mkdir(path.dirname(bundlePath), { recursive: true });
   await writeFile(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
 }
