@@ -107,6 +107,7 @@ git-runner.status.<job-id>
 git-runner.logs.<job-id>
 git-runner.results.<job-id>
 git-runner.workers.<worker-id>.heartbeat
+git-runner.workers.ready.<routing-tag>
 ```
 
 MVP stores latest status and terminal result in the local job store:
@@ -116,7 +117,7 @@ MVP stores latest status and terminal result in the local job store:
 .git-runner/jobs/<job-id>/result-summary.json
 ```
 
-NATS events are used to transport updates. MVP job delivery uses NATS core publish/subscribe, so it is not durable: a worker must already be subscribed to `git-runner.jobs.<routing-tag>` when submit publishes the job. Persistent NATS JetStream KV or streams are future enhancements, not part of MVP.
+NATS events are used to transport updates. MVP job delivery uses NATS core publish/subscribe, so it is not durable. By default, submit sends a readiness request to `git-runner.workers.ready.<routing-tag>` before publishing a job. Workers subscribed for that tag respond with their current worker state. If readiness is bypassed, a worker must already be subscribed to `git-runner.jobs.<routing-tag>` when submit publishes the job. Persistent NATS JetStream KV or streams are future enhancements, not part of MVP.
 
 ## 5. Status Transitions
 

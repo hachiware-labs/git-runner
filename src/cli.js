@@ -88,6 +88,9 @@ function parseArgs(argv) {
       case "--dry-run":
         options.dryRun = true;
         break;
+      case "--no-require-worker":
+        options.requireWorker = false;
+        break;
       case "--repo":
         options.repo = requireValue(argv, index, arg);
         index += 1;
@@ -225,7 +228,7 @@ async function commandInit(args, context) {
 
 async function commandSubmit(args, context) {
   if (args.help) {
-    return "git-runner submit --command <command> [--repo .] [--branch name] [--commit sha] [--dry-run] [--json]\n";
+    return "git-runner submit --command <command> [--repo .] [--branch name] [--commit sha] [--dry-run] [--no-require-worker] [--json]\n";
   }
   if (!args.command) {
     throw new CliError("missing required option: --command", EXIT_CODES.invalidUsage);
@@ -296,7 +299,13 @@ async function commandSubmit(args, context) {
   });
 
   try {
-    await publishJob({ natsUrl, subject, jobSpec });
+    await publishJob({
+      natsUrl,
+      subject,
+      jobSpec,
+      requireWorker: args.requireWorker !== false,
+      workerReadySubject: workerReadySubjectForJob(jobSpec)
+    });
   } catch (error) {
     await removeJobFromStore({
       cwd: context.cwd,
@@ -483,6 +492,10 @@ function formatSubmitResult({ args, jobSpec, subject, dryRun }) {
     return `${JSON.stringify(result, null, 2)}\n`;
   }
   return `job_id: ${result.job_id}\ncommit: ${result.commit}\nsubject: ${result.subject}\n`;
+}
+
+function workerReadySubjectForJob(jobSpec) {
+  return `git-runner.workers.ready.${jobSpec.worker.tags[0]}`;
 }
 
 async function copyArtifactsToOutput({ result, jobStoreResultPath, outputDir }) {

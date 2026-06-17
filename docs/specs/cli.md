@@ -88,6 +88,7 @@ git-runner submit \
   [--result-schema schemas/result.schema.json] \
   [--worker-tags default] \
   [--timeout-sec 3600] \
+  [--no-require-worker] \
   [--dry-run]
 ```
 
@@ -123,7 +124,14 @@ If `--commit-and-push` is provided while HEAD is detached and `--branch` is not 
 
 If `--dry-run` is provided, submit resolves Git state and builds the Job Spec, then prints it without writing local job store files and without publishing to NATS.
 
-If `--dry-run` is not provided, submit writes local pending job metadata and publishes the Job Spec.
+If `--dry-run` is not provided, submit writes local pending job metadata, verifies that a matching worker responds on `git-runner.workers.ready.<routing-tag>`, and publishes the Job Spec.
+
+Readiness behavior:
+
+- By default, submit requires a matching worker readiness response before publishing.
+- If no worker responds, submit fails with NATS exit code `4` and removes the local pending job metadata.
+- `--no-require-worker` disables this guard and publishes without a readiness check.
+- With the guard disabled, NATS core publish/subscribe does not retain the job for workers that subscribe later.
 
 Submit builds a Job Spec and publishes it to:
 

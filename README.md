@@ -106,7 +106,7 @@ node bin/git-runner.js get <job-id> --json
 
 For a complete walkthrough, see [docs/tutorial.md](docs/tutorial.md).
 
-Important: the MVP uses NATS core publish/subscribe, not a durable queue. Start a worker before `submit`, or the published job message can be missed.
+Important: the MVP uses NATS core publish/subscribe, not a durable queue. By default, `submit` checks for a matching ready worker before publishing. If no worker responds, submit fails and does not leave a pending job. Use `--no-require-worker` only when you intentionally want to bypass this guard.
 
 ## Common Commands
 
@@ -129,6 +129,14 @@ node bin/git-runner.js submit --repo . --command "npm test"
 ```
 
 For this to execute, at least one matching worker must already be subscribed to the NATS subject.
+
+Bypass the worker readiness guard:
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
+```
+
+With the guard disabled, NATS core does not retain the job for a worker that subscribes later.
 
 Commit and push changes before submitting:
 

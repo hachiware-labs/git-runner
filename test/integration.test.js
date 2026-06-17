@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -178,6 +178,28 @@ async function submitJob({ sourceRepo, jobStoreRoot, natsUrl, command = "node ru
   return JSON.parse(submit.stdout);
 }
 
+async function submitJobFailure({ sourceRepo, jobStoreRoot, natsUrl, command = "node run.js", extraArgs = [] }) {
+  try {
+    await runNode([
+      path.join(repoRoot, "bin", "git-runner.js"),
+      "submit",
+      "--repo",
+      sourceRepo,
+      "--command",
+      command,
+      "--job-store-root",
+      jobStoreRoot,
+      "--nats-url",
+      natsUrl,
+      "--json",
+      ...extraArgs
+    ], sourceRepo);
+  } catch (error) {
+    return error;
+  }
+  throw new Error("submit unexpectedly succeeded");
+}
+
 async function readSummary(jobStoreRoot, jobId) {
   return JSON.parse(await readFile(path.join(jobStoreRoot, jobId, "result-summary.json"), "utf8"));
 }
@@ -226,6 +248,36 @@ test("submit publishes to NATS and worker --once executes the command", async (t
     assert.match(stdout, /worker-ran/);
     const artifact = await readFile(path.join(jobStoreRoot, submitOutput.job_id, result.artifacts[0].stored_path), "utf8");
     assert.equal(artifact, "# Report\n");
+  });
+});
+
+test("submit fails fast when no matching worker is ready", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo();
+    const { jobStoreRoot } = await createRunnerRoot();
+
+    const error = await submitJobFailure({ sourceRepo, jobStoreRoot, natsUrl });
+
+    assert.equal(error.code, 4);
+    assert.match(error.stderr, /no ready worker responded/);
+    assert.deepEqual(await readdir(jobStoreRoot), []);
+  });
+});
+
+test("submit can bypass worker readiness guard explicitly", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo();
+    const { jobStoreRoot } = await createRunnerRoot();
+
+    const submitOutput = await submitJob({
+      sourceRepo,
+      jobStoreRoot,
+      natsUrl,
+      extraArgs: ["--no-require-worker"]
+    });
+    const status = JSON.parse(await readFile(path.join(jobStoreRoot, submitOutput.job_id, "status.json"), "utf8"));
+
+    assert.equal(status.status, "PENDING");
   });
 });
 
