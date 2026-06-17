@@ -38,6 +38,7 @@ export async function runExecutor(request) {
   let stderrBytes = 0;
   let stdoutTruncated = false;
   let stderrTruncated = false;
+  let failedStage = null;
   const cwd = resolveInside(request.workspace_path, request.working_dir, "working_dir");
 
   const run = async (command) => {
@@ -63,6 +64,7 @@ export async function runExecutor(request) {
     if (result.exitCode !== 0 || result.signal) {
       exitCode = result.exitCode;
       signal = result.signal;
+      failedStage = "setup";
       break;
     }
   }
@@ -71,6 +73,9 @@ export async function runExecutor(request) {
     const result = await run(request.entry.command);
     exitCode = result.exitCode;
     signal = result.signal;
+    if (result.exitCode !== 0 || result.signal) {
+      failedStage = "entry";
+    }
   }
 
   const resultData = await readResult({
@@ -86,6 +91,7 @@ export async function runExecutor(request) {
     stderr_bytes: stderrBytes,
     stdout_truncated: stdoutTruncated,
     stderr_truncated: stderrTruncated,
+    failed_stage: failedStage,
     ...resultData
   };
 }

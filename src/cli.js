@@ -12,6 +12,7 @@ import {
   removeJobFromStore,
   writeSubmitJob
 } from "./job-store.js";
+import { runLocalJob } from "./local-runner.js";
 import { publishJob } from "./nats-publisher.js";
 import { runWorker } from "./worker.js";
 
@@ -22,6 +23,7 @@ Commands:
   submit               Resolve Git ref, build Job Spec, and publish it
   status <job-id>      Read .git-runner/jobs/<job-id>/status.json
   recover-lock <job-id> Inspect stale execution.lock recovery preconditions
+  local run <job.json> Execute a Job Spec in an existing local workspace
   logs <job-id>        Read stdout/stderr logs from local job store
   get <job-id>         Read result-summary.json from local job store
 
@@ -37,6 +39,10 @@ export async function main(argv, context) {
   try {
     const result = await run(argv, context);
     if (result !== undefined) {
+      if (isCommandResult(result)) {
+        writeOutput(context.stdout, result.output);
+        return result.exitCode;
+      }
       writeOutput(context.stdout, result);
     }
     return EXIT_CODES.success;
@@ -63,6 +69,8 @@ export async function run(argv, context) {
       return commandStatus(args, context);
     case "recover-lock":
       return commandRecoverLock(args, context);
+    case "local":
+      return commandLocal(args, context);
     case "logs":
       return commandLogs(args, context);
     case "get":
@@ -91,6 +99,14 @@ function parseArgs(argv) {
         break;
       case "--job-store-root":
         options.jobStoreRoot = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--workspace":
+        options.workspace = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--bundle":
+        options.bundlePath = requireValue(argv, index, arg);
         index += 1;
         break;
       case "--json":
@@ -436,6 +452,30 @@ async function commandWorker(args, context) {
   return args.once ? "worker processed one job\n" : undefined;
 }
 
+async function commandLocal(args, context) {
+  if (args.help) {
+    return "git-runner local run <job.json> [--workspace .] [--bundle .git-runner/result-bundle.json] [--worker-id local-001] [--json]\n";
+  }
+  const subcommand = args.positional[0];
+  if (subcommand !== "run") {
+    throw new CliError("expected local subcommand: run", EXIT_CODES.invalidUsage);
+  }
+  const result = await runLocalJob({
+    cwd: context.cwd,
+    jobPath: args.positional[1],
+    workspace: args.workspace ?? ".",
+    bundlePath: args.bundlePath ?? ".git-runner/result-bundle.json",
+    workerId: args.workerId ?? "local-001"
+  });
+
+  return commandResult({
+    exitCode: result.exitCode,
+    output: args.json
+      ? result.bundle
+      : `result_bundle: ${result.bundlePath}\nstatus: ${result.bundle.status}\nreason: ${result.bundle.reason ?? ""}\n`
+  });
+}
+
 async function commandLogs(args, context) {
   if (args.help) {
     return "git-runner logs <job-id> [--stdout] [--stderr] [--job-store-root .git-runner/jobs]\n";
@@ -777,4 +817,16 @@ function writeOutput(stream, value) {
     return;
   }
   stream.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function commandResult({ exitCode, output }) {
+  return {
+    __gitRunnerCommandResult: true,
+    exitCode,
+    output
+  };
+}
+
+function isCommandResult(value) {
+  return value && typeof value === "object" && value.__gitRunnerCommandResult === true;
 }

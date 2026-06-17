@@ -15,6 +15,7 @@ MVP command:
 - `worker`
 - `status`
 - `recover-lock`
+- `local run`
 - `logs`
 - `get`
 
@@ -306,7 +307,44 @@ JSON output:
 }
 ```
 
-## 8. `git-runner logs`
+## 8. `git-runner local run`
+
+```bash
+git-runner local run <job.json> \
+  [--workspace .] \
+  [--bundle .git-runner/result-bundle.json] \
+  [--worker-id local-001] \
+  [--json]
+```
+
+Executes a Job Spec in an existing local workspace without NATS, JetStream, worker auth, execution lock, or Git clone/fetch/checkout.
+
+Behavior:
+
+1. Reads and normalizes the Job Spec.
+2. Writes params using the distributed executor params shape.
+3. Runs setup commands and then the entry command in `working_dir`.
+4. Captures stdout/stderr metadata.
+5. Validates result JSON and declared artifacts.
+6. Writes a terminal `git-runner.result-bundle.v1` Result Bundle.
+
+Exit behavior:
+
+- exits `0` when bundle status is `COMPLETED`;
+- exits `1` when bundle status is `FAILED` or `CANCELLED`;
+- still writes a bundle when possible for failed executions.
+
+Human output:
+
+```text
+result_bundle: C:\path\to\workspace\.git-runner\result-bundle.json
+status: COMPLETED
+reason:
+```
+
+JSON output returns the full Result Bundle. Detailed local-run contract is defined in [local-run.md](local-run.md), and bundle shape is defined in [result-bundle.md](result-bundle.md).
+
+## 9. `git-runner logs`
 
 ```bash
 git-runner logs <job-id> [--stream] [--stderr] [--stdout]
@@ -323,7 +361,7 @@ MVP reads logs from the configured local job store:
 
 MVP assumes `logs` can access the same `job_store_root` used by worker. Multi-machine log retrieval without shared storage is out of scope for MVP.
 
-## 9. `git-runner get`
+## 10. `git-runner get`
 
 ```bash
 git-runner get <job-id> [--json] [--output <dir>]

@@ -36,6 +36,7 @@ Implemented MVP capabilities:
 - artifact collection
 - local `status`, `logs`, and `get`
 - read-only `recover-lock` stale lock inspection
+- `git-runner local run` for existing-workspace Job Spec validation and Result Bundle output
 
 Out of scope for the MVP:
 
@@ -133,6 +134,14 @@ Inspect stale lock recovery preconditions without mutating the job store:
 node bin/git-runner.js recover-lock <job-id> --stale-after-sec 300
 ```
 
+Validate a Job Spec in an existing workspace without NATS or Git checkout:
+
+```bash
+node bin/git-runner.js local run job.json --workspace . --bundle .git-runner/result-bundle.json
+```
+
+`local run` writes a `git-runner.result-bundle.v1` Result Bundle and returns a non-zero exit code when the bundle status is `FAILED` or `CANCELLED`.
+
 ## Common Commands
 
 Create default config:
@@ -169,6 +178,12 @@ Use JetStream durable delivery:
 nats-server -js
 node bin/git-runner.js submit --repo . --command "npm test" --jetstream
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+```
+
+Run a Job Spec locally and emit a Result Bundle:
+
+```bash
+node bin/git-runner.js local run job.json --workspace . --json
 ```
 
 Commit and push changes before submitting:

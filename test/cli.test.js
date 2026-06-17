@@ -273,6 +273,207 @@ test("recover-lock dry-run refuses terminal result recovery", async () => {
   assert.equal(recovery.terminal_result.status, "COMPLETED");
 });
 
+test("local run writes a completed result bundle", async () => {
+  const cwd = await tempDir();
+  const workspace = await tempDir();
+  await mkdir(path.join(workspace, "schemas"), { recursive: true });
+  await writeFile(path.join(workspace, "schemas", "result.schema.json"), `${JSON.stringify({
+    type: "object",
+    required: ["ok"],
+    properties: {
+      ok: { type: "boolean" }
+    }
+  })}\n`);
+  await writeFile(path.join(workspace, "write-result.js"), [
+    "import { readFile, writeFile, mkdir } from 'node:fs/promises';",
+    "const input = JSON.parse(await readFile('.git-runner/params.json', 'utf8'));",
+    "await mkdir('out', { recursive: true });",
+    "await writeFile('out/result.json', JSON.stringify({ ok: input.params.ok }));",
+    "await writeFile('out/report.txt', 'report');",
+    "console.log('done');"
+  ].join("\n"));
+  await writeFile(path.join(workspace, "job.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_local_ok",
+    source: {
+      type: "git",
+      repo: workspace,
+      branch: "main",
+      commit: "abc123"
+    },
+    working_dir: ".",
+    setup: ["node --version"],
+    entry: {
+      type: "command",
+      command: "node write-result.js"
+    },
+    params: {
+      ok: true
+    },
+    param_passing: {
+      mode: "json_file",
+      path: ".git-runner/params.json"
+    },
+    outputs: {
+      result: {
+        path: "out/result.json",
+        schema: {
+          type: "json_schema",
+          file: "schemas/result.schema.json"
+        }
+      },
+      artifacts: [
+        {
+          name: "report",
+          path: "out/report.txt",
+          required: true
+        }
+      ]
+    },
+    execution: {
+      timeout_sec: 5,
+      max_stdout_bytes: 1000,
+      max_stderr_bytes: 1000
+    },
+    worker: {
+      routing_tag: "research"
+    }
+  }, null, 2)}\n`);
+
+  const result = await runCli([
+    "local",
+    "run",
+    "job.json",
+    "--workspace",
+    workspace,
+    "--bundle",
+    ".git-runner/result-bundle.json",
+    "--worker-id",
+    "local-test"
+  ], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  assert.match(result.stdout, /status: COMPLETED/);
+  const bundle = JSON.parse(await readFile(path.join(workspace, ".git-runner", "result-bundle.json"), "utf8"));
+  assert.equal(bundle.schema_version, "git-runner.result-bundle.v1");
+  assert.equal(bundle.job_id, "job_local_ok");
+  assert.equal(bundle.status, "COMPLETED");
+  assert.equal(bundle.worker.worker_id, "local-test");
+  assert.equal(bundle.worker.routing_tag, "research");
+  assert.deepEqual(bundle.outputs.result.value, { ok: true });
+  assert.equal(bundle.outputs.artifacts[0].missing, false);
+});
+
+test("local run writes a failed bundle for a missing required artifact", async () => {
+  const workspace = await tempDir();
+  await writeFile(path.join(workspace, "write-result.js"), [
+    "import { writeFile, mkdir } from 'node:fs/promises';",
+    "await mkdir('out', { recursive: true });",
+    "await writeFile('out/result.json', JSON.stringify({ ok: true }));"
+  ].join("\n"));
+  await writeFile(path.join(workspace, "job.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_local_missing_artifact",
+    source: {
+      type: "git",
+      repo: workspace,
+      commit: "abc123"
+    },
+    working_dir: ".",
+    setup: [],
+    entry: {
+      type: "command",
+      command: "node write-result.js"
+    },
+    params: {},
+    param_passing: {
+      mode: "json_file",
+      path: ".git-runner/params.json"
+    },
+    outputs: {
+      result: {
+        path: "out/result.json",
+        schema: {
+          type: "none"
+        }
+      },
+      artifacts: [
+        {
+          name: "missing",
+          path: "out/missing.txt",
+          required: true
+        }
+      ]
+    },
+    execution: {
+      timeout_sec: 5,
+      max_stdout_bytes: 1000,
+      max_stderr_bytes: 1000
+    }
+  }, null, 2)}\n`);
+
+  const result = await runCli(["local", "run", "job.json", "--workspace", workspace, "--json"], workspace);
+
+  assert.equal(result.exitCode, EXIT_CODES.genericFailure);
+  const outputBundle = JSON.parse(result.stdout);
+  assert.equal(outputBundle.status, "FAILED");
+  assert.equal(outputBundle.reason, "artifact_missing");
+  const savedBundle = JSON.parse(await readFile(path.join(workspace, ".git-runner", "result-bundle.json"), "utf8"));
+  assert.equal(savedBundle.reason, "artifact_missing");
+  assert.equal(savedBundle.outputs.artifacts[0].missing, true);
+});
+
+test("local run distinguishes setup failure from entry command failure", async () => {
+  const workspace = await tempDir();
+  await writeFile(path.join(workspace, "job.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_local_setup_failed",
+    source: {
+      type: "git",
+      repo: workspace,
+      commit: "abc123"
+    },
+    working_dir: ".",
+    setup: [
+      {
+        type: "command",
+        command: "node -e \"process.exit(7)\""
+      }
+    ],
+    entry: {
+      type: "command",
+      command: "node -e \"process.exit(8)\""
+    },
+    params: {},
+    param_passing: {
+      mode: "json_file",
+      path: ".git-runner/params.json"
+    },
+    outputs: {
+      result: {
+        path: ".git-runner/result.json",
+        schema: {
+          type: "none"
+        }
+      },
+      artifacts: []
+    },
+    execution: {
+      timeout_sec: 5,
+      max_stdout_bytes: 1000,
+      max_stderr_bytes: 1000
+    }
+  }, null, 2)}\n`);
+
+  const result = await runCli(["local", "run", "job.json", "--workspace", workspace, "--json"], workspace);
+
+  assert.equal(result.exitCode, EXIT_CODES.genericFailure);
+  const bundle = JSON.parse(result.stdout);
+  assert.equal(bundle.reason, "setup_failed");
+  assert.equal(bundle.execution.exit_code, 7);
+  assert.equal(bundle.execution.failed_stage, "setup");
+});
+
 test("submit rejects conflicting JetStream and core publish-only options", async () => {
   const cwd = await tempDir();
   const result = await runCli(["submit", "--command", "npm test", "--jetstream", "--no-require-worker"], cwd);
