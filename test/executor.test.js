@@ -88,3 +88,26 @@ test("executor records result_invalid warning for JSON schema failure", async ()
   assert.equal(summary.exit_code, 0);
   assert.equal(summary.result_warnings[0].code, "result_invalid");
 });
+
+test("executor truncates stdout and stderr at configured byte limits", async () => {
+  const workspace = await tempWorkspace();
+  await writeFile(path.join(workspace, "run.js"), [
+    "process.stdout.write('abcdef');",
+    "process.stderr.write('uvwxyz');",
+    ""
+  ].join("\n"));
+
+  const request = baseRequest(workspace, "node run.js");
+  request.execution.max_stdout_bytes = 3;
+  request.execution.max_stderr_bytes = 4;
+
+  const summary = await runExecutor(request);
+
+  assert.equal(summary.exit_code, 0);
+  assert.equal(summary.stdout_bytes, 3);
+  assert.equal(summary.stderr_bytes, 4);
+  assert.equal(summary.stdout_truncated, true);
+  assert.equal(summary.stderr_truncated, true);
+  assert.equal(await readFile(path.join(workspace, ".git-runner", "stdout.log"), "utf8"), "abc");
+  assert.equal(await readFile(path.join(workspace, ".git-runner", "stderr.log"), "utf8"), "uvwx");
+});

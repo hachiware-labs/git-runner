@@ -109,12 +109,61 @@ test("status, logs, and get read from local job store", async () => {
   assert.deepEqual(JSON.parse(result.stdout).result, { ok: true });
 });
 
+test("logs supports stdout/stderr selection and stream flag for local job store", async () => {
+  const cwd = await tempDir();
+  const jobDir = path.join(cwd, ".git-runner", "jobs", "job_logs");
+  await mkdir(jobDir, { recursive: true });
+  await writeFile(path.join(jobDir, "stdout.log"), "out\n");
+  await writeFile(path.join(jobDir, "stderr.log"), "err\n");
+
+  const stdoutOnly = await runCli(["logs", "job_logs", "--stdout", "--stream"], cwd);
+  assert.equal(stdoutOnly.exitCode, EXIT_CODES.success);
+  assert.equal(stdoutOnly.stdout, "out\n");
+
+  const stderrOnly = await runCli(["logs", "job_logs", "--stderr"], cwd);
+  assert.equal(stderrOnly.exitCode, EXIT_CODES.success);
+  assert.equal(stderrOnly.stdout, "err\n");
+});
+
+test("get copies collected artifacts to output directory", async () => {
+  const cwd = await tempDir();
+  const jobDir = path.join(cwd, ".git-runner", "jobs", "job_artifacts");
+  await mkdir(path.join(jobDir, "artifacts"), { recursive: true });
+  await writeFile(path.join(jobDir, "artifacts", "report"), "# Report\n");
+  await writeFile(path.join(jobDir, "result-summary.json"), `${JSON.stringify({
+    job_id: "job_artifacts",
+    status: "COMPLETED",
+    result: {},
+    artifacts: [
+      {
+        name: "report",
+        stored_path: path.join("artifacts", "report"),
+        missing: false
+      }
+    ]
+  })}\n`);
+
+  const outputDir = path.join(cwd, "downloaded");
+  const result = await runCli(["get", "job_artifacts", "--output", outputDir], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  assert.equal(await readFile(path.join(outputDir, "report"), "utf8"), "# Report\n");
+});
+
 test("missing job returns job store failure exit code", async () => {
   const cwd = await tempDir();
   const result = await runCli(["status", "job_missing"], cwd);
 
   assert.equal(result.exitCode, EXIT_CODES.jobStoreFailure);
   assert.match(result.stderr, /job not found/);
+});
+
+test("worker refuses to start without worker key", async () => {
+  const cwd = await tempDir();
+  const result = await runCli(["worker", "--worker-id", "local-001", "--once"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.invalidUsage);
+  assert.match(result.stderr, /missing worker key/);
 });
 
 test("submit dry-run resolves current HEAD into a Job Spec", async () => {
@@ -206,4 +255,38 @@ test("submit fails with git exit code for non-repository path", async () => {
 
   assert.equal(result.exitCode, EXIT_CODES.gitFailure);
   assert.match(result.stderr, /git rev-parse --show-toplevel failed/);
+});
+
+test("submit commit-and-push creates branch, commits changes, and pushes to origin", async () => {
+  const remote = await tempDir();
+  await git(remote, ["init", "--bare"]);
+  const repo = await createGitRepo();
+  await git(repo, ["remote", "add", "origin", remote]);
+  await writeFile(path.join(repo, "new-file.txt"), "new\n");
+
+  const result = await runCli([
+    "submit",
+    "--repo",
+    repo,
+    "--command",
+    "npm test",
+    "--commit-and-push",
+    "--branch",
+    "codex/exp",
+    "--message",
+    "commit for runner",
+    "--dry-run",
+    "--json"
+  ], repo);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  const output = JSON.parse(result.stdout);
+  const branchCommit = await git(repo, ["rev-parse", "codex/exp"]);
+  const remoteCommit = await git(repo, ["ls-remote", "origin", "refs/heads/codex/exp"]);
+  const dirty = await git(repo, ["status", "--porcelain"]);
+
+  assert.equal(output.commit, branchCommit);
+  assert.match(remoteCommit, new RegExp(`^${branchCommit}\\s+refs/heads/codex/exp$`));
+  assert.equal(dirty, "");
+  assert.equal(await git(repo, ["log", "-1", "--pretty=%s"]), "commit for runner");
 });

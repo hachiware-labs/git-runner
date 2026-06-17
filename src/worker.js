@@ -192,10 +192,24 @@ async function handleJob({ jobSpec, connection, workerConfig, options, workerSta
   });
 
   if (workspacePath && workerConfig.cleanup?.mode !== "never") {
-    await rm(workspacePath, { recursive: true, force: true });
+    await cleanupWorkspace(workspacePath);
   }
   workerState.status = "idle";
   workerState.current_job_id = null;
+}
+
+async function cleanupWorkspace(workspacePath) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(workspacePath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!["EBUSY", "ENOTEMPTY", "EPERM"].includes(error.code) || attempt === 4) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+    }
+  }
 }
 
 function validateJob(jobSpec) {

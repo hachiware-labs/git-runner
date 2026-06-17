@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { initProjectConfig, loadProjectConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES, formatError } from "./errors.js";
@@ -173,6 +173,13 @@ function parseArgs(argv) {
       case "--stderr":
         options.stdout = false;
         options.stderr = true;
+        break;
+      case "--stream":
+        options.stream = true;
+        break;
+      case "--output":
+        options.outputDir = requireValue(argv, index, arg);
+        index += 1;
         break;
       case "--help":
       case "-h":
@@ -390,6 +397,14 @@ async function commandGet(args, context) {
     fileName: "result-summary.json"
   });
 
+  if (args.outputDir) {
+    await copyArtifactsToOutput({
+      result: result.value,
+      jobStoreResultPath: result.path,
+      outputDir: resolvePath(context.cwd, args.outputDir)
+    });
+  }
+
   return args.json ? result.value : JSON.stringify(result.value, null, 2);
 }
 
@@ -468,6 +483,19 @@ function formatSubmitResult({ args, jobSpec, subject, dryRun }) {
     return `${JSON.stringify(result, null, 2)}\n`;
   }
   return `job_id: ${result.job_id}\ncommit: ${result.commit}\nsubject: ${result.subject}\n`;
+}
+
+async function copyArtifactsToOutput({ result, jobStoreResultPath, outputDir }) {
+  const jobDir = path.dirname(jobStoreResultPath);
+  await mkdir(outputDir, { recursive: true });
+  for (const artifact of result.artifacts ?? []) {
+    if (artifact.missing || !artifact.stored_path) {
+      continue;
+    }
+    const source = path.resolve(jobDir, artifact.stored_path);
+    const destinationName = path.basename(artifact.stored_path);
+    await copyFile(source, path.join(outputDir, destinationName));
+  }
 }
 
 function formatStatus(status) {

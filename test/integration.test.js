@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+import { connect } from "@nats-io/transport-node";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, "..");
@@ -18,7 +20,7 @@ async function git(cwd, args) {
   return result.stdout.trim();
 }
 
-async function createRunnableRepo() {
+async function createRunnableRepo({ commandScript = null, outputs = null, extraFiles = {} } = {}) {
   const repo = await tempDir("git-runner-source-");
   await git(repo, ["init"]);
   await git(repo, ["config", "user.name", "Test User"]);
@@ -32,7 +34,7 @@ async function createRunnableRepo() {
       mode: "json_file",
       path: ".git-runner/params.json"
     },
-    outputs: {
+    outputs: outputs ?? {
       result: {
         path: ".git-runner/result.json",
         schema: {
@@ -55,7 +57,7 @@ async function createRunnableRepo() {
     },
     job_store_root: ".git-runner/jobs"
   }, null, 2)}\n`);
-  await writeFile(path.join(repo, "run.js"), [
+  await writeFile(path.join(repo, "run.js"), commandScript ?? [
     "const fs = require('fs');",
     "fs.mkdirSync('.git-runner', { recursive: true });",
     "fs.mkdirSync('results', { recursive: true });",
@@ -64,7 +66,12 @@ async function createRunnableRepo() {
     "console.log('worker-ran');",
     ""
   ].join("\n"));
-  await git(repo, ["add", ".git-runner/config.json", "run.js"]);
+  for (const [filePath, content] of Object.entries(extraFiles)) {
+    const absolute = path.join(repo, filePath);
+    await mkdir(path.dirname(absolute), { recursive: true });
+    await writeFile(absolute, content);
+  }
+  await git(repo, ["add", "."]);
   await git(repo, ["commit", "-m", "add runnable script"]);
   return repo;
 }
@@ -84,11 +91,7 @@ function natsServerPath() {
   return existsSync(candidate) ? candidate : null;
 }
 
-function runNode(args, cwd) {
-  return execFileAsync(process.execPath, args, { cwd, windowsHide: true });
-}
-
-test("submit publishes to NATS and worker --once executes the command", async (t) => {
+async function withNats(t, fn) {
   const natsPath = natsServerPath();
   if (!natsPath) {
     t.skip("NATS server path is not available");
@@ -101,13 +104,23 @@ test("submit publishes to NATS and worker --once executes the command", async (t
     nats.kill();
   });
   await new Promise((resolve) => setTimeout(resolve, 750));
+  await fn({ natsUrl: `nats://127.0.0.1:${port}` });
+}
 
-  const sourceRepo = await createRunnableRepo();
+function runNode(args, cwd) {
+  return execFileAsync(process.execPath, args, { cwd, windowsHide: true });
+}
+
+async function createRunnerRoot() {
   const runnerRoot = await tempDir("git-runner-worker-");
-  const jobStoreRoot = path.join(runnerRoot, ".git-runner", "jobs");
-  const workspaceRoot = path.join(runnerRoot, ".git-runner", "workspaces");
-  await mkdir(runnerRoot, { recursive: true });
+  return {
+    runnerRoot,
+    jobStoreRoot: path.join(runnerRoot, ".git-runner", "jobs"),
+    workspaceRoot: path.join(runnerRoot, ".git-runner", "workspaces")
+  };
+}
 
+async function runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs = [] }) {
   const worker = spawn(process.execPath, [
     path.join(repoRoot, "bin", "git-runner.js"),
     "worker",
@@ -115,69 +128,305 @@ test("submit publishes to NATS and worker --once executes the command", async (t
     "it-worker",
     "--worker-key",
     "dev",
-    "--allow-all-repos",
     "--job-store-root",
     jobStoreRoot,
     "--workspace-root",
     workspaceRoot,
     "--nats-url",
-    `nats://127.0.0.1:${port}`,
-    "--once"
+    natsUrl,
+    "--once",
+    ...extraArgs
   ], {
     cwd: runnerRoot,
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"]
   });
 
-  let workerStdout = "";
-  let workerStderr = "";
+  let stdout = "";
+  let stderr = "";
   worker.stdout.on("data", (chunk) => {
-    workerStdout += chunk.toString();
+    stdout += chunk.toString();
   });
   worker.stderr.on("data", (chunk) => {
-    workerStderr += chunk.toString();
+    stderr += chunk.toString();
   });
   t.after(() => {
     worker.kill();
   });
-
   await new Promise((resolve) => setTimeout(resolve, 750));
+  return {
+    wait: () => new Promise((resolve) => worker.on("exit", (code) => resolve(code))),
+    output: () => ({ stdout, stderr })
+  };
+}
 
+async function submitJob({ sourceRepo, jobStoreRoot, natsUrl, command = "node run.js", extraArgs = [] }) {
   const submit = await runNode([
     path.join(repoRoot, "bin", "git-runner.js"),
     "submit",
     "--repo",
     sourceRepo,
     "--command",
-    "node run.js",
+    command,
     "--job-store-root",
     jobStoreRoot,
     "--nats-url",
-    `nats://127.0.0.1:${port}`,
-    "--json"
+    natsUrl,
+    "--json",
+    ...extraArgs
   ], sourceRepo);
-  const submitOutput = JSON.parse(submit.stdout);
+  return JSON.parse(submit.stdout);
+}
 
-  const workerExit = await new Promise((resolve) => {
-    worker.on("exit", (code) => resolve(code));
+async function readSummary(jobStoreRoot, jobId) {
+  return JSON.parse(await readFile(path.join(jobStoreRoot, jobId, "result-summary.json"), "utf8"));
+}
+
+async function publishRawJob(natsUrl, subject, jobSpec) {
+  const connection = await connect({ servers: natsUrl });
+  connection.publish(subject, new TextEncoder().encode(JSON.stringify(jobSpec)));
+  await connection.drain();
+}
+
+async function publishCancel(natsUrl, jobId) {
+  const connection = await connect({ servers: natsUrl });
+  connection.publish(`git-runner.cancels.${jobId}`, new TextEncoder().encode(JSON.stringify({ job_id: jobId })));
+  await connection.drain();
+}
+
+test("submit publishes to NATS and worker --once executes the command", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo();
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({
+      t,
+      runnerRoot,
+      jobStoreRoot,
+      workspaceRoot,
+      natsUrl,
+      extraArgs: ["--allow-all-repos"]
+    });
+
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl });
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    assert.match(worker.output().stdout, /worker processed one job/);
+
+    const status = JSON.parse(await readFile(path.join(jobStoreRoot, submitOutput.job_id, "status.json"), "utf8"));
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    const stdout = await readFile(path.join(jobStoreRoot, submitOutput.job_id, "stdout.log"), "utf8");
+
+    assert.equal(status.status, "COMPLETED");
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(result.exit_code, 0);
+    assert.deepEqual(result.result, { ok: true });
+    assert.equal(result.artifacts.length, 1);
+    assert.equal(result.artifacts[0].name, "report");
+    assert.equal(result.artifacts[0].missing, false);
+    assert.equal(result.artifacts[0].media_type, "text/markdown");
+    assert.match(stdout, /worker-ran/);
+    const artifact = await readFile(path.join(jobStoreRoot, submitOutput.job_id, result.artifacts[0].stored_path), "utf8");
+    assert.equal(artifact, "# Report\n");
   });
-  assert.equal(workerExit, 0, workerStderr);
-  assert.match(workerStdout, /worker processed one job/);
-
-  const status = JSON.parse(await readFile(path.join(jobStoreRoot, submitOutput.job_id, "status.json"), "utf8"));
-  const result = JSON.parse(await readFile(path.join(jobStoreRoot, submitOutput.job_id, "result-summary.json"), "utf8"));
-  const stdout = await readFile(path.join(jobStoreRoot, submitOutput.job_id, "stdout.log"), "utf8");
-
-  assert.equal(status.status, "COMPLETED");
-  assert.equal(result.status, "COMPLETED");
-  assert.equal(result.exit_code, 0);
-  assert.deepEqual(result.result, { ok: true });
-  assert.equal(result.artifacts.length, 1);
-  assert.equal(result.artifacts[0].name, "report");
-  assert.equal(result.artifacts[0].missing, false);
-  assert.equal(result.artifacts[0].media_type, "text/markdown");
-  assert.match(stdout, /worker-ran/);
-  const artifact = await readFile(path.join(jobStoreRoot, submitOutput.job_id, result.artifacts[0].stored_path), "utf8");
-  assert.equal(artifact, "# Report\n");
 });
-import { existsSync } from "node:fs";
+
+test("worker records worker_policy_denied when repository is not allowed", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo();
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl });
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl });
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.reason, "worker_policy_denied");
+  });
+});
+
+test("worker records worker_policy_denied when job tag is not allowed", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+
+    await publishRawJob(natsUrl, "git-runner.jobs.default", {
+      schema_version: 1,
+      job_id: "job_tag_denied",
+      source: {
+        type: "git",
+        repo: "unused",
+        commit: "abc123"
+      },
+      working_dir: ".",
+      setup: [],
+      entry: {
+        type: "command",
+        command: "echo hi"
+      },
+      params: {},
+      param_passing: {
+        mode: "json_file",
+        path: ".git-runner/params.json"
+      },
+      outputs: {
+        result: {
+          path: ".git-runner/result.json",
+          schema: {
+            type: "none"
+          }
+        },
+        artifacts: []
+      },
+      execution: {
+        timeout_sec: 3600,
+        max_stdout_bytes: 10485760,
+        max_stderr_bytes: 10485760
+      },
+      worker: {
+        tags: ["gpu"]
+      },
+      runtime: {
+        type: "host"
+      }
+    });
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, "job_tag_denied");
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.reason, "worker_policy_denied");
+  });
+});
+
+test("worker records command_failed for non-zero command exit", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo({ commandScript: "process.exit(7);\n" });
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl });
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.reason, "command_failed");
+    assert.equal(result.exit_code, 7);
+  });
+});
+
+test("worker records timeout when executor exceeds timeout", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo({ commandScript: "setTimeout(() => {}, 5000);\n" });
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl, extraArgs: ["--timeout-sec", "1"] });
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.reason, "timeout");
+  });
+});
+
+test("worker records result_missing for required JSON schema result", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo({
+      outputs: {
+        result: {
+          path: ".git-runner/result.json",
+          schema: {
+            type: "json_schema",
+            file: "schemas/result.schema.json"
+          }
+        },
+        artifacts: []
+      },
+      commandScript: "console.log('no-result');\n",
+      extraFiles: {
+        "schemas/result.schema.json": JSON.stringify({ type: "object" })
+      }
+    });
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl });
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.reason, "result_missing");
+  });
+});
+
+test("worker records result_invalid for JSON schema validation failure", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo({
+      outputs: {
+        result: {
+          path: ".git-runner/result.json",
+          schema: {
+            type: "json_schema",
+            file: "schemas/result.schema.json"
+          }
+        },
+        artifacts: []
+      },
+      commandScript: [
+        "const fs = require('fs');",
+        "fs.mkdirSync('.git-runner', { recursive: true });",
+        "fs.writeFileSync('.git-runner/result.json', JSON.stringify({ ok: 'no' }));",
+        ""
+      ].join("\n"),
+      extraFiles: {
+        "schemas/result.schema.json": JSON.stringify({
+          type: "object",
+          required: ["ok"],
+          properties: {
+            ok: { type: "boolean" }
+          }
+        })
+      }
+    });
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl });
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.reason, "result_invalid");
+  });
+});
+
+test("worker records CANCELLED when cancel subject is published", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const sourceRepo = await createRunnableRepo({ commandScript: "setTimeout(() => {}, 5000);\n" });
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl });
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await publishCancel(natsUrl, submitOutput.job_id);
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    assert.equal(result.status, "CANCELLED");
+    assert.equal(result.reason, "cancelled");
+  });
+});
+
+test("worker records job_invalid for malformed job spec with job_id", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+
+    await publishRawJob(natsUrl, "git-runner.jobs.default", {
+      schema_version: 1,
+      job_id: "job_invalid_spec",
+      source: {
+        type: "git"
+      }
+    });
+
+    assert.equal(await worker.wait(), 0, worker.output().stderr);
+    const result = await readSummary(jobStoreRoot, "job_invalid_spec");
+    assert.equal(result.status, "FAILED");
+    assert.equal(result.reason, "job_invalid");
+  });
+});
