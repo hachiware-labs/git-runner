@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,6 +9,7 @@ import { main } from "../src/cli.js";
 import { EXIT_CODES } from "../src/errors.js";
 
 const execFileAsync = promisify(execFile);
+const repoRoot = path.resolve(import.meta.dirname, "..");
 
 function memoryStream() {
   return {
@@ -40,6 +41,15 @@ async function git(cwd, args) {
   return result.stdout.trim();
 }
 
+async function commandAvailable(command, args = ["--version"]) {
+  try {
+    await execFileAsync(command, args, { windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function createGitRepo() {
   const repo = await tempDir();
   await git(repo, ["init"]);
@@ -49,6 +59,16 @@ async function createGitRepo() {
   await git(repo, ["add", "file.txt"]);
   await git(repo, ["commit", "-m", "initial"]);
   return repo;
+}
+
+function valueAtPath(value, fieldPath) {
+  let current = value;
+  const matcher = /([^.[\]]+)|\[(\d+)\]/g;
+  for (const match of fieldPath.matchAll(matcher)) {
+    const key = match[1] ?? Number(match[2]);
+    current = current?.[key];
+  }
+  return current;
 }
 
 async function head(repo) {
@@ -472,6 +492,64 @@ test("local run distinguishes setup failure from entry command failure", async (
   assert.equal(bundle.reason, "setup_failed");
   assert.equal(bundle.execution.exit_code, 7);
   assert.equal(bundle.execution.failed_stage, "setup");
+});
+
+test("local run satisfies the Research Booster acceptance fixture", async (t) => {
+  if (!(await commandAvailable("python"))) {
+    t.skip("python command is not available for the Research Booster fixture");
+    return;
+  }
+
+  const workspace = await tempDir();
+  await cp(
+    path.join(repoRoot, "examples", "research-booster-local-runner"),
+    path.join(workspace, "examples", "research-booster-local-runner"),
+    { recursive: true }
+  );
+  const acceptancePath = path.join(workspace, "examples", "research-booster-local-runner", "local-runner-acceptance.json");
+  const acceptance = JSON.parse(await readFile(acceptancePath, "utf8"));
+  await mkdir(path.join(workspace, "schemas"), { recursive: true });
+  await writeFile(path.join(workspace, "schemas", "research-booster.v1.schema.json"), `${JSON.stringify({
+    type: "object",
+    required: ["schema_version", "status", "metrics", "evaluation_context"],
+    properties: {
+      schema_version: { const: "research-booster.v1" },
+      status: { const: "completed" },
+      metrics: {
+        type: "object",
+        required: ["judge_score"],
+        properties: {
+          judge_score: { type: "number" }
+        }
+      },
+      evaluation_context: {
+        type: "object",
+        required: ["eval_suite_id"],
+        properties: {
+          eval_suite_id: { type: "string" }
+        }
+      }
+    }
+  }, null, 2)}\n`);
+
+  const result = await runCli([
+    "local",
+    "run",
+    acceptance.job,
+    "--workspace",
+    workspace,
+    "--bundle",
+    acceptance.command_under_test.bundle,
+    "--json"
+  ], workspace);
+
+  assert.equal(result.exitCode, acceptance.command_under_test.expected_exit_code);
+  const stdoutBundle = JSON.parse(result.stdout);
+  const savedBundle = JSON.parse(await readFile(path.join(workspace, acceptance.command_under_test.bundle), "utf8"));
+  assert.deepEqual(stdoutBundle, savedBundle);
+  for (const [fieldPath, expected] of Object.entries(acceptance.expected_bundle)) {
+    assert.deepEqual(valueAtPath(savedBundle, fieldPath), expected, fieldPath);
+  }
 });
 
 test("submit rejects conflicting JetStream and core publish-only options", async () => {
