@@ -57,17 +57,15 @@ export async function runWorker(options) {
 
   try {
     const subscriptions = workerConfig.tags.map((tag) => connection.subscribe(`git-runner.jobs.${tag}`));
-    const readinessSubscriptions = workerConfig.tags.map((tag) => connection.subscribe(`git-runner.workers.ready.${tag}`));
     const loops = subscriptions.map((subscription) => receiveLoop({ subscription, connection, workerConfig, options, workerState }));
-    const readinessLoops = readinessSubscriptions.map((subscription) => readinessLoop({ subscription, workerConfig, workerState }));
     if (workerConfig.once) {
       await Promise.race(loops);
-      for (const subscription of [...subscriptions, ...readinessSubscriptions]) {
+      for (const subscription of subscriptions) {
         subscription.unsubscribe();
       }
       await connection.close();
     } else {
-      await Promise.all([...loops, ...readinessLoops]);
+      await Promise.all(loops);
     }
   } finally {
     clearInterval(heartbeat);
@@ -113,24 +111,17 @@ function validateWorkerStartup(workerConfig) {
 async function receiveLoop({ subscription, connection, workerConfig, options, workerState }) {
   for await (const message of subscription) {
     const jobSpec = JSON.parse(textDecoder.decode(message.data));
+    message.respond(textEncoder.encode(JSON.stringify({
+      schema_version: 1,
+      event_type: "accepted",
+      job_id: jobSpec.job_id ?? null,
+      worker_id: workerConfig.worker_id,
+      timestamp: new Date().toISOString()
+    })));
     await handleJob({ jobSpec, connection, workerConfig, options, workerState });
     if (workerConfig.once) {
       return;
     }
-  }
-}
-
-async function readinessLoop({ subscription, workerConfig, workerState }) {
-  for await (const message of subscription) {
-    message.respond(textEncoder.encode(JSON.stringify({
-      schema_version: 1,
-      worker_id: workerConfig.worker_id,
-      status: workerState.status,
-      current_job_id: workerState.current_job_id,
-      tags: workerConfig.tags,
-      allow_all_repos: workerConfig.allow_all_repos,
-      timestamp: new Date().toISOString()
-    })));
   }
 }
 

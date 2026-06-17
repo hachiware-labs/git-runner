@@ -303,8 +303,7 @@ async function commandSubmit(args, context) {
       natsUrl,
       subject,
       jobSpec,
-      requireWorker: args.requireWorker !== false,
-      workerReadySubject: workerReadySubjectForJob(jobSpec)
+      requireWorker: args.requireWorker !== false
     });
   } catch (error) {
     await removeJobFromStore({
@@ -492,10 +491,6 @@ function formatSubmitResult({ args, jobSpec, subject, dryRun }) {
     return `${JSON.stringify(result, null, 2)}\n`;
   }
   return `job_id: ${result.job_id}\ncommit: ${result.commit}\nsubject: ${result.subject}\n`;
-}
-
-function workerReadySubjectForJob(jobSpec) {
-  return `git-runner.workers.ready.${jobSpec.worker.tags[0]}`;
 }
 
 async function copyArtifactsToOutput({ result, jobStoreResultPath, outputDir }) {

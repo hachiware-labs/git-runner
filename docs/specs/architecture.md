@@ -15,7 +15,7 @@ git-runner CLI
   |     Git repository inspection
   |     ref resolution to commit SHA
   |     Job Spec creation
-  |     NATS publish
+  |     NATS job dispatch
   |
   +-- inspection commands
   |     read local job store
@@ -60,7 +60,7 @@ checked-out Git workspace
 | Layer | Owns | Must Not Own |
 | --- | --- | --- |
 | Research Booster | experiment meaning, result interpretation, Finding, Recommendation | Git checkout, worker process management, command execution |
-| CLI submitter | repository inspection, ref resolution, Job Spec creation, NATS publish | worker policy decision, command execution |
+| CLI submitter | repository inspection, ref resolution, Job Spec creation, NATS job dispatch | worker policy decision, command execution |
 | NATS transport | message transport and subject routing | job semantics, result interpretation, NATS server lifecycle |
 | worker supervisor | job acceptance, policy validation, workspace lifecycle, git checkout, executor lifecycle, timeout, terminal status mapping | direct command execution, Research Booster semantics |
 | executor process | setup and entry command execution in a checked-out workspace | NATS connection, job routing, worker policy |
@@ -77,8 +77,10 @@ checked-out Git workspace
    2. else explicit `--branch`
    3. else current `HEAD`
 4. CLI optionally performs `--commit-and-push`.
-5. CLI publishes Job Spec to `git-runner.jobs.<routing-tag>`.
-6. CLI records local submit metadata under the configured `job_store_root`.
+5. CLI records local submit metadata under the configured `job_store_root`.
+6. CLI dispatches Job Spec to `git-runner.jobs.<routing-tag>`.
+   - By default this uses NATS request/reply and requires a worker acceptance response.
+   - With `--no-require-worker`, this uses publish-only delivery.
 7. CLI prints `job_id`, `commit`, and subject.
 
 Submitter never executes the job command.
@@ -90,20 +92,21 @@ Submitter never executes the job command.
 3. Worker connects to NATS.
 4. Worker subscribes to job subjects for configured tags.
 5. Worker receives a Job Spec.
-6. Worker validates schema and policy.
-7. Worker writes accepted job metadata to local job store.
-8. Worker publishes `RUNNING`.
-9. Worker prepares per-job workspace.
-10. Worker fetches repository and checks out `source.commit` as detached HEAD.
-11. Worker starts executor process.
-12. Worker enforces timeout.
-13. Worker listens for cancellation on `git-runner.cancels.<job-id>` while job is active.
-14. Worker maps executor result to terminal status and reason.
-15. Worker validates result file when required.
-16. Worker collects artifacts.
-17. Worker writes terminal result summary.
-18. Worker publishes terminal status and result.
-19. Worker cleans workspace according to cleanup policy.
+6. Worker responds to request/reply dispatch when a reply subject is present.
+7. Worker validates schema and policy.
+8. Worker writes accepted job metadata to local job store.
+9. Worker publishes `RUNNING`.
+10. Worker prepares per-job workspace.
+11. Worker fetches repository and checks out `source.commit` as detached HEAD.
+12. Worker starts executor process.
+13. Worker enforces timeout.
+14. Worker listens for cancellation on `git-runner.cancels.<job-id>` while job is active.
+15. Worker maps executor result to terminal status and reason.
+16. Worker validates result file when required.
+17. Worker collects artifacts.
+18. Worker writes terminal result summary.
+19. Worker publishes terminal status and result.
+20. Worker cleans workspace according to cleanup policy.
 
 Worker supervisor never runs setup or entry commands in-process.
 
@@ -163,7 +166,7 @@ Out of MVP scope:
 | Failure Boundary | Owner | Expected Behavior |
 | --- | --- | --- |
 | invalid CLI input | CLI | fail before publishing a job |
-| NATS publish/connect failure | CLI or worker | fail command or worker startup; no fake success |
+| NATS dispatch/connect failure | CLI or worker | fail command or worker startup; no fake success |
 | invalid Job Spec | worker supervisor | terminal `FAILED` with `job_invalid` |
 | worker policy denial | worker supervisor | terminal `FAILED` with `worker_policy_denied` |
 | clone/fetch/checkout failure | worker supervisor | terminal `FAILED` with `git_checkout_failed` |

@@ -216,7 +216,7 @@ async function publishCancel(natsUrl, jobId) {
   await connection.drain();
 }
 
-test("submit publishes to NATS and worker --once executes the command", async (t) => {
+test("submit dispatches to NATS and worker --once executes the command", async (t) => {
   await withNats(t, async ({ natsUrl }) => {
     const sourceRepo = await createRunnableRepo();
     const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
@@ -251,7 +251,7 @@ test("submit publishes to NATS and worker --once executes the command", async (t
   });
 });
 
-test("submit fails fast when no matching worker is ready", async (t) => {
+test("submit fails fast when no matching worker accepts dispatch", async (t) => {
   await withNats(t, async ({ natsUrl }) => {
     const sourceRepo = await createRunnableRepo();
     const { jobStoreRoot } = await createRunnerRoot();
@@ -259,12 +259,12 @@ test("submit fails fast when no matching worker is ready", async (t) => {
     const error = await submitJobFailure({ sourceRepo, jobStoreRoot, natsUrl });
 
     assert.equal(error.code, 4);
-    assert.match(error.stderr, /no ready worker responded/);
+    assert.match(error.stderr, /no worker accepted/);
     assert.deepEqual(await readdir(jobStoreRoot), []);
   });
 });
 
-test("submit can bypass worker readiness guard explicitly", async (t) => {
+test("submit can bypass worker dispatch guard explicitly", async (t) => {
   await withNats(t, async ({ natsUrl }) => {
     const sourceRepo = await createRunnableRepo();
     const { jobStoreRoot } = await createRunnerRoot();

@@ -106,7 +106,7 @@ node bin/git-runner.js get <job-id> --json
 
 通しの手順は [docs/tutorial_ja.md](docs/tutorial_ja.md) を参照してください。
 
-重要: MVP は NATS core publish/subscribe を使っており、durable queue ではありません。default では、`submit` は publish 前に一致する ready worker の応答を確認します。worker が応答しない場合、pending job を残さずに失敗します。この guard を意図的に外す場合だけ `--no-require-worker` を使います。
+重要: MVP の default job dispatch は NATS core request/reply を使っており、durable queue ではありません。default では、`submit` は一致する worker が job message を accept したことを確認してから戻ります。worker が accept しない場合、pending job を残さずに失敗します。この guard を意図的に外す場合だけ `--no-require-worker` を使います。
 
 ## よく使う command
 
@@ -130,13 +130,13 @@ node bin/git-runner.js submit --repo . --command "npm test"
 
 実行されるには、対象 NATS subject を購読している worker が先に起動している必要があります。
 
-worker readiness guard を bypass:
+worker dispatch guard を bypass:
 
 ```bash
 node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
 ```
 
-guard を外すと、NATS core は後から subscribe した worker のために job を保持しません。
+guard を外すと、`submit` は publish-only delivery を使います。NATS core は後から subscribe した worker のために job を保持しません。
 
 submit 前に commit / push する:
 

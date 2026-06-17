@@ -120,20 +120,20 @@ If both `--commit` and `--branch` are provided, `--commit` wins.
 
 If `--commit-and-push` is provided while HEAD is detached and `--branch` is not provided, submit fails with a clear error.
 
-### 4.3 Job Publish
+### 4.3 Job Dispatch
 
 If `--dry-run` is provided, submit resolves Git state and builds the Job Spec, then prints it without writing local job store files and without publishing to NATS.
 
-If `--dry-run` is not provided, submit writes local pending job metadata, verifies that a matching worker responds on `git-runner.workers.ready.<routing-tag>`, and publishes the Job Spec.
+If `--dry-run` is not provided, submit writes local pending job metadata and dispatches the Job Spec to `git-runner.jobs.<routing-tag>`.
 
-Readiness behavior:
+Dispatch behavior:
 
-- By default, submit requires a matching worker readiness response before publishing.
-- If no worker responds, submit fails with NATS exit code `4` and removes the local pending job metadata.
-- `--no-require-worker` disables this guard and publishes without a readiness check.
+- By default, submit uses NATS request/reply on the job subject and requires a matching worker to accept the job message before returning.
+- If no worker accepts the job, submit fails with NATS exit code `4` and removes the local pending job metadata.
+- `--no-require-worker` disables this guard and uses publish-only delivery.
 - With the guard disabled, NATS core publish/subscribe does not retain the job for workers that subscribe later.
 
-Submit builds a Job Spec and publishes it to:
+Submit builds a Job Spec and dispatches it to:
 
 ```text
 git-runner.jobs.<routing-tag>

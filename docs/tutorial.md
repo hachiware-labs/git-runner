@@ -43,7 +43,7 @@ Keep that terminal running while you submit and process jobs.
 
 If your NATS server listens somewhere else, pass `--nats-url` to both `submit` and `worker`, or set `GIT_RUNNER_NATS_URL`.
 
-Important: the MVP uses NATS core publish/subscribe, not a durable queue. By default, `submit` checks for a matching ready worker before publishing. If no worker responds, submit fails and does not leave a pending job.
+Important: the MVP uses NATS core request/reply for default job dispatch, not a durable queue. By default, `submit` requires a matching worker to accept the job message before returning. If no worker accepts it, submit fails and does not leave a pending job.
 
 ## 3. Initialize git-runner Config
 
@@ -123,13 +123,13 @@ node bin/git-runner.js submit --repo . --command "npm test" --branch codex/tutor
 
 Use `--commit-and-push` only when you really want the CLI to stage all changes, commit them if needed, and push the selected branch.
 
-To bypass the readiness guard, pass `--no-require-worker`:
+To bypass the dispatch guard, pass `--no-require-worker`:
 
 ```bash
 node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
 ```
 
-With the guard disabled, NATS core will not retain the job for a worker that subscribes later.
+With the guard disabled, `submit` uses publish-only delivery and NATS core will not retain the job for a worker that subscribes later.
 
 The worker will:
 

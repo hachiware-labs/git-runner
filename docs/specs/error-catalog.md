@@ -59,7 +59,7 @@ MVP does not perform automatic retry. Users can submit a new job explicitly.
 | commit fails | `submit --commit-and-push` | `3` | no | git stderr summary |
 | push fails | `submit --commit-and-push` | `3` | no | git stderr summary |
 | NATS connect or publish fails | `submit` | `4` | no | NATS URL and operation |
-| no matching worker responds to submit readiness check | `submit` | `4` | no | routing tag and `--no-require-worker` bypass |
+| no matching worker accepts submit dispatch | `submit` | `4` | no | routing tag and `--no-require-worker` bypass |
 | local job store write fails | `submit`, `worker`, `status`, `logs`, `get` | `5` | no | path and operation |
 | `worker --worker-id` missing and config missing | `worker` | `2` | no | `worker_id` |
 | worker key missing | `worker` | `2` | no | `--worker-key` or `GIT_RUNNER_WORKER_KEY` |
