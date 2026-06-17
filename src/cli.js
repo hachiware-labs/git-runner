@@ -4,7 +4,14 @@ import { initProjectConfig, loadProjectConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES, formatError } from "./errors.js";
 import { commitAndPush, inspectRepository, isWorkingTreeDirty, resolveExecutionCommit } from "./git.js";
 import { buildJobSpec, createJobId, subjectForJob } from "./job-spec.js";
-import { readJobExecutionLock, readJobJson, readJobText, removeJobFromStore, writeSubmitJob } from "./job-store.js";
+import {
+  readJobExecutionLock,
+  readJobJson,
+  readJobJsonIfExists,
+  readJobText,
+  removeJobFromStore,
+  writeSubmitJob
+} from "./job-store.js";
 import { publishJob } from "./nats-publisher.js";
 import { runWorker } from "./worker.js";
 
@@ -14,6 +21,7 @@ Commands:
   init                 Create .git-runner/config.json
   submit               Resolve Git ref, build Job Spec, and publish it
   status <job-id>      Read .git-runner/jobs/<job-id>/status.json
+  recover-lock <job-id> Inspect stale execution.lock recovery preconditions
   logs <job-id>        Read stdout/stderr logs from local job store
   get <job-id>         Read result-summary.json from local job store
 
@@ -53,6 +61,8 @@ export async function run(argv, context) {
       return commandSubmit(args, context);
     case "status":
       return commandStatus(args, context);
+    case "recover-lock":
+      return commandRecoverLock(args, context);
     case "logs":
       return commandLogs(args, context);
     case "get":
@@ -362,6 +372,48 @@ async function commandStatus(args, context) {
   return args.json ? status : formatStatus(status);
 }
 
+async function commandRecoverLock(args, context) {
+  if (args.help) {
+    return "git-runner recover-lock <job-id> [--json] [--stale-after-sec 300] [--job-store-root .git-runner/jobs]\n";
+  }
+  if (args.staleAfterSec !== undefined && (!Number.isInteger(args.staleAfterSec) || args.staleAfterSec <= 0)) {
+    throw new CliError("--stale-after-sec must be a positive integer", EXIT_CODES.invalidUsage);
+  }
+  const jobId = requireJobId(args);
+  const staleAfterSec = args.staleAfterSec ?? DEFAULT_ACCEPTED_STALE_AFTER_SEC;
+  await readJobJson({
+    cwd: context.cwd,
+    configPath: args.configPath,
+    jobStoreRoot: args.jobStoreRoot,
+    env: context.env,
+    jobId,
+    fileName: "status.json"
+  });
+  const executionLock = await readJobExecutionLock({
+    cwd: context.cwd,
+    configPath: args.configPath,
+    jobStoreRoot: args.jobStoreRoot,
+    env: context.env,
+    jobId
+  });
+  const terminalResult = await readJobJsonIfExists({
+    cwd: context.cwd,
+    configPath: args.configPath,
+    jobStoreRoot: args.jobStoreRoot,
+    env: context.env,
+    jobId,
+    fileName: "result-summary.json"
+  });
+  const recovery = buildRecoverLockDryRun({
+    jobId,
+    executionLock,
+    terminalResult: terminalResult?.value ?? null,
+    staleAfterSec
+  });
+
+  return args.json ? recovery : formatRecoverLock(recovery);
+}
+
 async function commandWorker(args, context) {
   if (args.help) {
     return "git-runner worker --worker-id <id> --worker-key <key> [--tags default] [--allow-repo repo] [--allow-all-repos] [--jetstream] [--once]\n";
@@ -584,6 +636,41 @@ function formatStatus(status) {
   return `${lines.join("\n")}\n`;
 }
 
+function formatRecoverLock(recovery) {
+  const lines = [
+    `job_id: ${recovery.job_id}`,
+    "dry_run: true",
+    `eligible: ${recovery.eligible}`,
+    `reason: ${recovery.reason}`,
+    `stale_after_sec: ${recovery.stale_after_sec}`,
+    `execution_lock: ${recovery.execution_lock.present ? "present" : "missing"}`
+  ];
+  if (recovery.execution_lock.worker_id) {
+    lines.push(`execution_lock_worker_id: ${recovery.execution_lock.worker_id}`);
+  }
+  if (recovery.execution_lock.acquired_at) {
+    lines.push(`execution_lock_acquired_at: ${recovery.execution_lock.acquired_at}`);
+  }
+  if (recovery.execution_lock.age_sec !== undefined) {
+    lines.push(`execution_lock_age_sec: ${recovery.execution_lock.age_sec}`);
+  }
+  if (typeof recovery.execution_lock.stale === "boolean") {
+    lines.push(`execution_lock_stale: ${recovery.execution_lock.stale}`);
+  }
+  if (recovery.execution_lock.error) {
+    lines.push(`execution_lock_error: ${recovery.execution_lock.error}`);
+  }
+  lines.push(`terminal_result: ${recovery.terminal_result.present ? "present" : "missing"}`);
+  if (recovery.terminal_result.status) {
+    lines.push(`terminal_result_status: ${recovery.terminal_result.status}`);
+  }
+  lines.push("next_steps:");
+  for (const step of recovery.next_steps) {
+    lines.push(`- ${step}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function annotateStatus(status, { executionLock, staleAfterSec }) {
   let annotated = status;
   if (status.status === "ACCEPTED" && status.timestamp) {
@@ -620,6 +707,68 @@ function annotateStatus(status, { executionLock, staleAfterSec }) {
     ...annotated,
     execution_lock: lock
   };
+}
+
+function buildRecoverLockDryRun({ jobId, executionLock, terminalResult, staleAfterSec }) {
+  const lock = buildExecutionLockDiagnostic(executionLock, staleAfterSec);
+  const terminal = terminalResult
+    ? { present: true, status: terminalResult.status ?? null, reason: terminalResult.reason ?? null }
+    : { present: false };
+  let eligible = false;
+  let reason = "ready_for_manual_confirmation";
+  const nextSteps = [];
+
+  if (!lock.present) {
+    reason = "lock_not_found";
+    nextSteps.push("No execution lock exists; no lock recovery is needed.");
+  } else if (terminal.present) {
+    reason = "terminal_result_exists";
+    nextSteps.push("Preserve the existing terminal result; do not remove the lock for rerun recovery.");
+  } else if (lock.stale === false) {
+    reason = "lock_not_stale";
+    nextSteps.push("Wait for the job to advance, or rerun with a larger expected-runtime threshold.");
+  } else if (lock.stale !== true) {
+    reason = "lock_staleness_unknown";
+    nextSteps.push("Inspect execution_lock metadata manually because acquired_at is missing or invalid.");
+  } else {
+    eligible = true;
+    nextSteps.push("Confirm the recorded worker process is no longer executing this job.");
+    nextSteps.push("Archive execution.lock for audit before removing it.");
+    nextSteps.push("Remove only execution.lock, then resume according to the delivery mode.");
+  }
+
+  return {
+    schema_version: 1,
+    command: "recover-lock",
+    dry_run: true,
+    job_id: jobId,
+    eligible,
+    reason,
+    stale_after_sec: staleAfterSec,
+    execution_lock: lock,
+    terminal_result: terminal,
+    next_steps: nextSteps
+  };
+}
+
+function buildExecutionLockDiagnostic(executionLock, staleAfterSec) {
+  if (!executionLock?.present) {
+    return { present: false };
+  }
+  const lock = {
+    present: true,
+    worker_id: executionLock.owner?.worker_id ?? null,
+    pid: executionLock.owner?.pid ?? null,
+    acquired_at: executionLock.owner?.acquired_at ?? null,
+    stale_after_sec: staleAfterSec,
+    ...(executionLock.error ? { error: executionLock.error } : {})
+  };
+  const timestampMs = Date.parse(lock.acquired_at);
+  if (Number.isFinite(timestampMs)) {
+    lock.age_sec = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
+    lock.stale = lock.age_sec >= staleAfterSec;
+  }
+  return lock;
 }
 
 function writeOutput(stream, value) {

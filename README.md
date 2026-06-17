@@ -35,6 +35,7 @@ Implemented MVP capabilities:
 - optional result JSON and JSON Schema validation
 - artifact collection
 - local `status`, `logs`, and `get`
+- read-only `recover-lock` stale lock inspection
 
 Out of scope for the MVP:
 
@@ -125,6 +126,12 @@ If a worker accepts a job and then crashes before validation or execution, the l
 
 Use `status --stale-after-sec <seconds>` to detect an `ACCEPTED` job or `execution.lock` that has not advanced. This is diagnostic only; the MVP does not retry stale jobs or release stale locks automatically.
 For manual stale lock recovery rules, see [docs/specs/recovery.md](docs/specs/recovery.md).
+
+Inspect stale lock recovery preconditions without mutating the job store:
+
+```bash
+node bin/git-runner.js recover-lock <job-id> --stale-after-sec 300
+```
 
 ## Common Commands
 

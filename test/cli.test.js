@@ -207,6 +207,72 @@ test("status rejects invalid stale threshold", async () => {
   assert.match(result.stderr, /--stale-after-sec/);
 });
 
+test("recover-lock dry-run reports stale lock recovery preconditions", async () => {
+  const cwd = await tempDir();
+  const jobDir = path.join(cwd, ".git-runner", "jobs", "job_stale_lock");
+  await mkdir(path.join(jobDir, "execution.lock"), { recursive: true });
+  await writeFile(path.join(jobDir, "status.json"), `${JSON.stringify({
+    job_id: "job_stale_lock",
+    status: "ACCEPTED",
+    reason: null,
+    worker_id: "local-001"
+  })}\n`);
+  await writeFile(path.join(jobDir, "execution.lock", "owner.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_stale_lock",
+    worker_id: "local-001",
+    pid: 123,
+    acquired_at: "2000-01-01T00:00:00.000Z"
+  })}\n`);
+
+  const result = await runCli(["recover-lock", "job_stale_lock", "--json", "--stale-after-sec", "1"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  const recovery = JSON.parse(result.stdout);
+  assert.equal(recovery.dry_run, true);
+  assert.equal(recovery.eligible, true);
+  assert.equal(recovery.reason, "ready_for_manual_confirmation");
+  assert.equal(recovery.execution_lock.worker_id, "local-001");
+  assert.equal(recovery.execution_lock.stale, true);
+
+  const human = await runCli(["recover-lock", "job_stale_lock", "--stale-after-sec", "1"], cwd);
+  assert.equal(human.exitCode, EXIT_CODES.success);
+  assert.match(human.stdout, /eligible: true/);
+  assert.match(human.stdout, /next_steps:/);
+});
+
+test("recover-lock dry-run refuses terminal result recovery", async () => {
+  const cwd = await tempDir();
+  const jobDir = path.join(cwd, ".git-runner", "jobs", "job_done_lock");
+  await mkdir(path.join(jobDir, "execution.lock"), { recursive: true });
+  await writeFile(path.join(jobDir, "status.json"), `${JSON.stringify({
+    job_id: "job_done_lock",
+    status: "COMPLETED",
+    reason: null,
+    worker_id: "local-001"
+  })}\n`);
+  await writeFile(path.join(jobDir, "execution.lock", "owner.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_done_lock",
+    worker_id: "local-001",
+    pid: 123,
+    acquired_at: "2000-01-01T00:00:00.000Z"
+  })}\n`);
+  await writeFile(path.join(jobDir, "result-summary.json"), `${JSON.stringify({
+    job_id: "job_done_lock",
+    status: "COMPLETED",
+    reason: null
+  })}\n`);
+
+  const result = await runCli(["recover-lock", "job_done_lock", "--json", "--stale-after-sec", "1"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  const recovery = JSON.parse(result.stdout);
+  assert.equal(recovery.eligible, false);
+  assert.equal(recovery.reason, "terminal_result_exists");
+  assert.equal(recovery.terminal_result.status, "COMPLETED");
+});
+
 test("submit rejects conflicting JetStream and core publish-only options", async () => {
   const cwd = await tempDir();
   const result = await runCli(["submit", "--command", "npm test", "--jetstream", "--no-require-worker"], cwd);

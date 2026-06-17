@@ -14,6 +14,7 @@ MVP command:
 - `submit`
 - `worker`
 - `status`
+- `recover-lock`
 - `logs`
 - `get`
 
@@ -274,7 +275,38 @@ execution_lock_stale: false
 execution_lock_stale_after_sec: 60
 ```
 
-## 7. `git-runner logs`
+## 7. `git-runner recover-lock`
+
+```bash
+git-runner recover-lock <job-id> [--json] [--stale-after-sec 60]
+```
+
+Inspects whether an existing `.git-runner/jobs/<job-id>/execution.lock` satisfies the read-only recovery preconditions in [recovery.md](recovery.md).
+
+MVP behavior:
+
+- Always dry-run.
+- Never removes or renames `execution.lock`.
+- Reports `eligible: true` only when a lock exists, no terminal result exists, and the lock is stale for the selected threshold.
+- Reports `next_steps` for manual operator confirmation and recovery.
+
+JSON output:
+
+```json
+{
+  "schema_version": 1,
+  "command": "recover-lock",
+  "dry_run": true,
+  "job_id": "job_001",
+  "eligible": true,
+  "reason": "ready_for_manual_confirmation",
+  "execution_lock": {},
+  "terminal_result": {},
+  "next_steps": []
+}
+```
+
+## 8. `git-runner logs`
 
 ```bash
 git-runner logs <job-id> [--stream] [--stderr] [--stdout]
@@ -291,7 +323,7 @@ MVP reads logs from the configured local job store:
 
 MVP assumes `logs` can access the same `job_store_root` used by worker. Multi-machine log retrieval without shared storage is out of scope for MVP.
 
-## 8. `git-runner get`
+## 9. `git-runner get`
 
 ```bash
 git-runner get <job-id> [--json] [--output <dir>]

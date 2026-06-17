@@ -82,9 +82,29 @@ Recovery depends on delivery mode:
 - Core request/reply mode: there is no durable queued message. Submit a new job if rerun is required.
 - Core publish-only mode: there is no durable queued message. Submit a new job if rerun is required.
 
-## 5. Future `recover-lock` Command Contract
+## 5. `recover-lock` Dry-Run Command
 
-A future management command may automate the manual steps:
+`recover-lock` inspects recovery preconditions without mutating job store files:
+
+```bash
+git-runner recover-lock <job-id> \
+  [--stale-after-sec 300] \
+  [--json]
+```
+
+Required behavior:
+
+- The command is always dry-run in MVP.
+- The command prints lock owner metadata, terminal result presence, `eligible`, `reason`, and `next_steps`.
+- The command must not remove, rename, or edit `execution.lock`.
+- The command reports `eligible: false` when no lock exists.
+- The command reports `eligible: false` when a terminal `result-summary.json` exists.
+- The command reports `eligible: false` when the lock is not stale for the selected threshold.
+- The command reports `eligible: true` only when a lock exists, no terminal result exists, and the lock is stale for the selected threshold.
+
+## 6. Future Mutating Recovery Contract
+
+A future mutating mode may automate the manual steps:
 
 ```bash
 git-runner recover-lock <job-id> \
@@ -95,7 +115,6 @@ git-runner recover-lock <job-id> \
 
 Required behavior:
 
-- Default mode must be dry-run and print the same lock owner metadata as `status`.
 - Without `--force`, the command must not remove `execution.lock`.
 - The command must refuse recovery when no lock exists.
 - The command must refuse recovery when a terminal `result-summary.json` exists unless a future explicit terminal-cleanup option is defined.
@@ -103,7 +122,7 @@ Required behavior:
 - If `--archive` is present, the command must move the lock to `execution.lock.recovered-<timestamp>` instead of deleting it.
 - The command must never delete job result, log, artifact, or job spec files.
 
-## 6. Non-Goals
+## 7. Non-Goals
 
 - No automatic stale lock release.
 - No automatic job retry from `status`.

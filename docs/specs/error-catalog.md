@@ -67,9 +67,11 @@ MVP does not perform automatic retry. Users can submit a new job explicitly.
 | worker NATS connect fails | `worker` | `4` | no | NATS URL |
 | worker JetStream consumer setup fails | `worker` | `4` | no | stream/consumer setup and NATS URL |
 | `status` job id missing | `status` | `2` | no | job id |
+| `recover-lock` job id missing | `recover-lock` | `2` | no | job id |
+| `recover-lock --stale-after-sec` is not a positive integer | `recover-lock` | `2` | no | `--stale-after-sec` |
 | `logs` job id missing | `logs` | `2` | no | job id |
 | `get` job id missing | `get` | `2` | no | job id |
-| job not found in local job store | `status`, `logs`, `get` | `5` | no | job id and `job_store_root` |
+| job not found in local job store | `status`, `logs`, `get`, `recover-lock` | `5` | no | job id and `job_store_root` |
 
 ## 5. Job Validation Failures
 

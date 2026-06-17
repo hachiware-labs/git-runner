@@ -42,6 +42,27 @@ export async function readJobJson({ cwd, configPath, jobStoreRoot, env, jobId, f
   }
 }
 
+export async function readJobJsonIfExists({ cwd, configPath, jobStoreRoot, env, jobId, fileName }) {
+  const storeRoot = await resolveJobStore({ cwd, configPath, jobStoreRoot, env });
+  const filePath = resolveJobPath(storeRoot, jobId, fileName);
+
+  try {
+    const raw = await readFile(filePath, "utf8");
+    return {
+      path: filePath,
+      value: JSON.parse(raw)
+    };
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    if (error instanceof SyntaxError) {
+      throw new CliError(`invalid JSON in job store file ${filePath}: ${error.message}`, EXIT_CODES.jobStoreFailure);
+    }
+    throw new CliError(`cannot read job store file ${filePath}: ${error.message}`, EXIT_CODES.jobStoreFailure);
+  }
+}
+
 export async function readJobText({ cwd, configPath, jobStoreRoot, env, jobId, fileName }) {
   const storeRoot = await resolveJobStore({ cwd, configPath, jobStoreRoot, env });
   const filePath = resolveJobPath(storeRoot, jobId, fileName);
