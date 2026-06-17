@@ -76,6 +76,12 @@ git-runner --help
 nats-server
 ```
 
+さらに別 terminal で、1 job だけ処理する worker を起動して待機させます。
+
+```bash
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
+```
+
 project config を作成します。
 
 ```bash
@@ -88,11 +94,7 @@ job を投入します。
 node bin/git-runner.js submit --repo . --command "npm test"
 ```
 
-出力された `job_id` を控え、別 terminal で 1 job だけ処理する worker を起動します。
-
-```bash
-node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
-```
+出力された `job_id` を控えます。待機中の worker が job を処理して終了します。
 
 job を確認します。
 
@@ -103,6 +105,8 @@ node bin/git-runner.js get <job-id> --json
 ```
 
 通しの手順は [docs/tutorial_ja.md](docs/tutorial_ja.md) を参照してください。
+
+重要: MVP は NATS core publish/subscribe を使っており、durable queue ではありません。`submit` の前に worker を起動してください。worker が subscribe していない状態で publish された job message は取り逃がされる可能性があります。
 
 ## よく使う command
 
@@ -123,6 +127,8 @@ node bin/git-runner.js submit --repo . --command "npm test" --dry-run --json
 ```bash
 node bin/git-runner.js submit --repo . --command "npm test"
 ```
+
+実行されるには、対象 NATS subject を購読している worker が先に起動している必要があります。
 
 submit 前に commit / push する:
 

@@ -5,8 +5,8 @@ This tutorial runs a complete local `git-runner` flow:
 1. start NATS
 2. initialize config
 3. preview a pinned Job Spec
-4. submit a job
-5. run a worker
+4. start a worker
+5. submit a job
 6. inspect status, logs, result, and artifacts
 
 The commands use `node bin/git-runner.js` so they work directly from this repository checkout.
@@ -42,6 +42,8 @@ nats-server
 Keep that terminal running while you submit and process jobs.
 
 If your NATS server listens somewhere else, pass `--nats-url` to both `submit` and `worker`, or set `GIT_RUNNER_NATS_URL`.
+
+Important: the MVP uses NATS core publish/subscribe, not a durable queue. A worker must already be subscribed when `submit` publishes the job.
 
 ## 3. Initialize git-runner Config
 
@@ -87,27 +89,9 @@ If you pass both `--commit` and `--branch`, `--commit` wins.
 node bin/git-runner.js submit --repo . --branch <branch-name> --commit <commit-sha> --command "npm test" --dry-run --json
 ```
 
-## 5. Submit a Job
+## 5. Start a Worker
 
-Submit the current committed state:
-
-```bash
-node bin/git-runner.js submit --repo . --command "npm test"
-```
-
-Copy the printed `job_id`.
-
-If the working tree is dirty, `submit` still uses the committed Git state and prints a warning. To include local changes, commit them yourself or use `--commit-and-push`.
-
-```bash
-node bin/git-runner.js submit --repo . --command "npm test" --branch codex/tutorial-run --commit-and-push --message "Prepare tutorial run"
-```
-
-Use `--commit-and-push` only when you really want the CLI to stage all changes, commit them if needed, and push the selected branch.
-
-## 6. Run a Worker
-
-Run one job and exit:
+Run a one-job worker in another terminal and leave it waiting:
 
 ```bash
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
@@ -118,6 +102,26 @@ For a stricter local worker, allow only the current repository path:
 ```bash
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-repo C:\path\to\git-runner --once
 ```
+
+The worker subscribes to `git-runner.jobs.default`. Keep this process running before the next step.
+
+## 6. Submit a Job
+
+Submit the current committed state:
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test"
+```
+
+Copy the printed `job_id`. The waiting worker should receive the message, process one job, and exit.
+
+If the working tree is dirty, `submit` still uses the committed Git state and prints a warning. To include local changes, commit them yourself or use `--commit-and-push`.
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test" --branch codex/tutorial-run --commit-and-push --message "Prepare tutorial run"
+```
+
+Use `--commit-and-push` only when you really want the CLI to stage all changes, commit them if needed, and push the selected branch.
 
 The worker will:
 

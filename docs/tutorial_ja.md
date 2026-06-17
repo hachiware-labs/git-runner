@@ -5,8 +5,8 @@
 1. NATS を起動する
 2. config を初期化する
 3. commit に固定された Job Spec を preview する
-4. job を submit する
-5. worker を動かす
+4. worker を起動する
+5. job を submit する
 6. status、logs、result、artifacts を確認する
 
 この repository checkout から直接動かせるように、command は `node bin/git-runner.js` を使います。
@@ -42,6 +42,8 @@ nats-server
 submit と worker を動かす間、この terminal は起動したままにします。
 
 NATS server が別 URL の場合は、`submit` と `worker` の両方に `--nats-url` を渡すか、`GIT_RUNNER_NATS_URL` を設定します。
+
+重要: MVP は NATS core publish/subscribe を使っており、durable queue ではありません。`submit` が job を publish する時点で、worker が既に subscribe している必要があります。
 
 ## 3. git-runner config を初期化する
 
@@ -87,27 +89,9 @@ node bin/git-runner.js submit --repo . --command "npm test" --dry-run --json
 node bin/git-runner.js submit --repo . --branch <branch-name> --commit <commit-sha> --command "npm test" --dry-run --json
 ```
 
-## 5. Job を submit する
+## 5. Worker を起動する
 
-現在の committed state を submit します。
-
-```bash
-node bin/git-runner.js submit --repo . --command "npm test"
-```
-
-出力された `job_id` を控えます。
-
-working tree が dirty の場合でも、`submit` は committed Git state を使い、warning を出します。local changes を含めたい場合は自分で commit するか、`--commit-and-push` を使います。
-
-```bash
-node bin/git-runner.js submit --repo . --command "npm test" --branch codex/tutorial-run --commit-and-push --message "Prepare tutorial run"
-```
-
-`--commit-and-push` は、CLI に全変更の stage、必要なら commit、選択 branch の push をさせたい場合だけ使います。
-
-## 6. Worker を動かす
-
-1 job だけ処理して終了する worker を起動します。
+別 terminal で、1 job だけ処理して終了する worker を起動して待機させます。
 
 ```bash
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
@@ -118,6 +102,26 @@ local でも少し厳しくする場合は、現在の repository path だけを
 ```bash
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-repo C:\path\to\git-runner --once
 ```
+
+worker は `git-runner.jobs.default` を subscribe します。次の step までこの process を起動したままにします。
+
+## 6. Job を submit する
+
+現在の committed state を submit します。
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test"
+```
+
+出力された `job_id` を控えます。待機中の worker が message を受け取り、1 job を処理して終了します。
+
+working tree が dirty の場合でも、`submit` は committed Git state を使い、warning を出します。local changes を含めたい場合は自分で commit するか、`--commit-and-push` を使います。
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test" --branch codex/tutorial-run --commit-and-push --message "Prepare tutorial run"
+```
+
+`--commit-and-push` は、CLI に全変更の stage、必要なら commit、選択 branch の push をさせたい場合だけ使います。
 
 worker は以下を行います。
 

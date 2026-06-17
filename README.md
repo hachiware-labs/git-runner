@@ -76,6 +76,12 @@ Start NATS in one terminal:
 nats-server
 ```
 
+Start a one-job worker in another terminal and leave it waiting:
+
+```bash
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
+```
+
 Initialize project config:
 
 ```bash
@@ -88,11 +94,7 @@ Submit a job:
 node bin/git-runner.js submit --repo . --command "npm test"
 ```
 
-The output includes a `job_id`. In another terminal, run a one-job worker:
-
-```bash
-node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
-```
+The output includes a `job_id`. The waiting worker processes the job and exits.
 
 Inspect the job:
 
@@ -103,6 +105,8 @@ node bin/git-runner.js get <job-id> --json
 ```
 
 For a complete walkthrough, see [docs/tutorial.md](docs/tutorial.md).
+
+Important: the MVP uses NATS core publish/subscribe, not a durable queue. Start a worker before `submit`, or the published job message can be missed.
 
 ## Common Commands
 
@@ -123,6 +127,8 @@ Submit the current committed state:
 ```bash
 node bin/git-runner.js submit --repo . --command "npm test"
 ```
+
+For this to execute, at least one matching worker must already be subscribed to the NATS subject.
 
 Commit and push changes before submitting:
 

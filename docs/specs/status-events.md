@@ -116,7 +116,7 @@ MVP stores latest status and terminal result in the local job store:
 .git-runner/jobs/<job-id>/result-summary.json
 ```
 
-NATS events are used to transport updates. Persistent NATS JetStream KV is a future enhancement, not part of MVP.
+NATS events are used to transport updates. MVP job delivery uses NATS core publish/subscribe, so it is not durable: a worker must already be subscribed to `git-runner.jobs.<routing-tag>` when submit publishes the job. Persistent NATS JetStream KV or streams are future enhancements, not part of MVP.
 
 ## 5. Status Transitions
 
