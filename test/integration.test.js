@@ -128,12 +128,12 @@ async function createRunnerRoot() {
   };
 }
 
-async function runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs = [] }) {
+async function runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, workerId = "it-worker", extraArgs = [] }) {
   const worker = spawn(process.execPath, [
     path.join(repoRoot, "bin", "git-runner.js"),
     "worker",
     "--worker-id",
-    "it-worker",
+    workerId,
     "--worker-key",
     "dev",
     "--job-store-root",
@@ -164,7 +164,15 @@ async function runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsU
   });
   await new Promise((resolve) => setTimeout(resolve, 750));
   return {
-    wait: () => exitPromise,
+    wait: (timeoutMs = 10000) => Promise.race([
+      exitPromise,
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          worker.kill();
+          reject(new Error(`worker ${workerId} did not exit within ${timeoutMs}ms; stderr: ${stderr}`));
+        }, timeoutMs);
+      })
+    ]),
     output: () => ({ stdout, stderr })
   };
 }
@@ -320,6 +328,50 @@ test("jetstream submit persists job until worker starts", async (t) => {
     assert.equal(result.exit_code, 0);
     assert.deepEqual(result.result, { ok: true });
   }, { jetstream: true });
+});
+
+test("execution lock prevents duplicate command execution across core workers", async (t) => {
+  await withNats(t, async ({ natsUrl }) => {
+    const counterFile = path.join(await tempDir("git-runner-counter-"), "count.txt");
+    const command = [
+      "node",
+      "-e",
+      JSON.stringify([
+        "const fs = require('fs');",
+        `fs.appendFileSync(${JSON.stringify(counterFile)}, 'x');`,
+        "fs.mkdirSync('.git-runner', { recursive: true });",
+        "fs.writeFileSync('.git-runner/result.json', JSON.stringify({ ok: true }));"
+      ].join(" "))
+    ].join(" ");
+    const sourceRepo = await createRunnableRepo();
+    const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
+    const workerA = await runWorkerOnce({
+      t,
+      runnerRoot,
+      jobStoreRoot,
+      workspaceRoot,
+      natsUrl,
+      workerId: "it-worker-a",
+      extraArgs: ["--allow-all-repos"]
+    });
+    const workerB = await runWorkerOnce({
+      t,
+      runnerRoot,
+      jobStoreRoot,
+      workspaceRoot,
+      natsUrl,
+      workerId: "it-worker-b",
+      extraArgs: ["--allow-all-repos"]
+    });
+
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl, command });
+    assert.equal(await workerA.wait(), 0, workerA.output().stderr);
+    assert.equal(await workerB.wait(), 0, workerB.output().stderr);
+
+    const result = await readSummary(jobStoreRoot, submitOutput.job_id);
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(await readFile(counterFile, "utf8"), "x");
+  });
 });
 
 test("worker records worker_policy_denied when repository is not allowed", async (t) => {

@@ -154,7 +154,7 @@ node bin/git-runner.js submit --repo . --command "npm test" --jetstream
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
 ```
 
-delivery は at-least-once です。worker が message ack 前に crash した場合、JetStream は job を再配送できます。そのため、job command は再実行されてもよい形にしてください。
+delivery は at-least-once です。同じ `job_store_root` を共有する worker は execution lock で重複実行を避けますが、worker が terminal result を書く前に crash した場合、JetStream は job を再配送できます。そのため、job command は再実行されてもよい形にしてください。
 
 worker は以下を行います。
 

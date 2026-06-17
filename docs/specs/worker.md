@@ -69,23 +69,29 @@ JetStream consumer contract:
 For each job:
 
 1. Parse Job Spec.
-2. Write and publish `ACCEPTED` status when `job_id` is valid.
-3. Respond to request/reply dispatch when a reply subject is present.
-4. Validate schema.
-5. Validate worker policy.
-6. Publish `RUNNING` status only after job is accepted and policy allows execution.
-7. Prepare workspace.
-8. Fetch repository.
-9. Checkout `source.commit` using detached HEAD.
-10. Spawn executor process.
-11. Monitor timeout and process exit.
-12. Collect executor result.
-13. Validate output result if schema is configured.
-14. Collect artifacts.
-15. Publish terminal status.
-16. Cleanup workspace according to config.
-17. Acknowledge the JetStream message when JetStream delivery is used.
-18. Return to idle state.
+2. If `job_id` is valid, acquire `.git-runner/jobs/<job-id>/execution.lock` with atomic directory creation.
+3. If `result-summary.json` already contains a terminal status, skip execution and preserve the existing result.
+4. If another worker holds `execution.lock`, do not execute the command.
+5. Write and publish `ACCEPTED` status after the execution lock is acquired.
+6. Respond to request/reply dispatch when a reply subject is present.
+7. Validate schema.
+8. Validate worker policy.
+9. Publish `RUNNING` status only after job is accepted and policy allows execution.
+10. Prepare workspace.
+11. Fetch repository.
+12. Checkout `source.commit` using detached HEAD.
+13. Spawn executor process.
+14. Monitor timeout and process exit.
+15. Collect executor result.
+16. Validate output result if schema is configured.
+17. Collect artifacts.
+18. Publish terminal status.
+19. Cleanup workspace according to config.
+20. Release `execution.lock`.
+21. Acknowledge the JetStream message when JetStream delivery is used and the job was completed or skipped because a terminal result already exists.
+22. Return to idle state.
+
+If JetStream redelivers a message while another worker still holds `execution.lock`, the worker does not acknowledge the message. This preserves redelivery if the original worker crashes before writing a terminal result.
 
 ## 5. Git Workspace
 

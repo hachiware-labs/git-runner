@@ -119,7 +119,7 @@ node bin/git-runner.js submit --repo . --command "npm test" --jetstream
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
 ```
 
-In JetStream mode, `submit` stores the job in stream `GIT_RUNNER_JOBS`; a matching worker can start after submit and still receive the job. Delivery is at-least-once, so commands should be safe to rerun if a worker crashes before acknowledging the message.
+In JetStream mode, `submit` stores the job in stream `GIT_RUNNER_JOBS`; a matching worker can start after submit and still receive the job. Delivery is at-least-once. Workers use a local job store execution lock to avoid duplicate execution after redelivery or multi-worker delivery when they share the same `job_store_root`, but commands should still be safe to rerun if a worker crashes before writing a terminal result.
 
 If a worker accepts a job and then crashes before validation or execution, the latest status may remain `ACCEPTED`. That indicates the job was delivered to a worker but no terminal result was recorded.
 
@@ -185,10 +185,12 @@ The MVP stores job data under:
   stdout.log
   stderr.log
   result-summary.json
+  execution.lock/
   artifacts/
 ```
 
 `status`, `logs`, and `get` read from this local store. The MVP assumes the submitter, worker, and inspection commands use the same host or a shared filesystem.
+`execution.lock/` is internal and exists while a worker owns job execution.
 
 ## Git Rules
 

@@ -154,7 +154,7 @@ node bin/git-runner.js submit --repo . --command "npm test" --jetstream
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
 ```
 
-Delivery is at-least-once. If a worker crashes before acknowledging a message, JetStream can redeliver it, so job commands should tolerate rerun.
+Delivery is at-least-once. Workers sharing the same `job_store_root` use an execution lock to avoid duplicate command execution, but if a worker crashes before writing a terminal result, JetStream can redeliver the job. Job commands should tolerate rerun.
 
 The worker will:
 

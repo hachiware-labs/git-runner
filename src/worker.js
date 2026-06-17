@@ -9,7 +9,15 @@ import { CliError, EXIT_CODES } from "./errors.js";
 import { checkoutDetached, cloneRepository, fetchRepository } from "./git.js";
 import { getJetStreamJobConsumer } from "./jetstream-jobs.js";
 import { resolveInside } from "./path-utils.js";
-import { copyJobLogs, ensureJobDir, writeJobSpec, writeJobStatus, writeResultSummary } from "./job-store.js";
+import {
+  acquireJobExecutionLock,
+  copyJobLogs,
+  ensureJobDir,
+  releaseJobExecutionLock,
+  writeJobSpec,
+  writeJobStatus,
+  writeResultSummary
+} from "./job-store.js";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -121,17 +129,22 @@ function validateWorkerStartup(workerConfig) {
 async function receiveLoop({ subscription, connection, workerConfig, options, workerState }) {
   for await (const message of subscription) {
     const jobSpec = JSON.parse(textDecoder.decode(message.data));
-    if (canWriteJobScopedStatus(jobSpec.job_id)) {
-      await writeAndPublishStatus({ connection, options, workerConfig, jobSpec, status: "ACCEPTED", reason: null });
-    }
-    message.respond(textEncoder.encode(JSON.stringify({
-      schema_version: 1,
-      event_type: "accepted",
-      job_id: jobSpec.job_id ?? null,
-      worker_id: workerConfig.worker_id,
-      timestamp: new Date().toISOString()
-    })));
-    await handleJob({ jobSpec, connection, workerConfig, options, workerState });
+    await processJobMessage({
+      jobSpec,
+      connection,
+      workerConfig,
+      options,
+      workerState,
+      onAccepted: async () => {
+        message.respond(textEncoder.encode(JSON.stringify({
+          schema_version: 1,
+          event_type: "accepted",
+          job_id: jobSpec.job_id ?? null,
+          worker_id: workerConfig.worker_id,
+          timestamp: new Date().toISOString()
+        })));
+      }
+    });
     if (workerConfig.once) {
       return;
     }
@@ -146,10 +159,11 @@ async function jetStreamReceiveLoop({ consumer, connection, workerConfig, option
     }
     try {
       const jobSpec = JSON.parse(textDecoder.decode(message.data));
-      if (canWriteJobScopedStatus(jobSpec.job_id)) {
-        await writeAndPublishStatus({ connection, options, workerConfig, jobSpec, status: "ACCEPTED", reason: null });
+      const result = await processJobMessage({ jobSpec, connection, workerConfig, options, workerState });
+      if (result.skipped === "locked") {
+        message.working();
+        continue;
       }
-      await handleJob({ jobSpec, connection, workerConfig, options, workerState });
       message.ack();
       if (workerConfig.once) {
         return;
@@ -158,6 +172,30 @@ async function jetStreamReceiveLoop({ consumer, connection, workerConfig, option
       message.nak();
       throw error;
     }
+  }
+}
+
+async function processJobMessage({ jobSpec, connection, workerConfig, options, workerState, onAccepted = async () => {} }) {
+  let executionLock = null;
+  if (canWriteJobScopedStatus(jobSpec.job_id)) {
+    const lockResult = await acquireJobExecutionLock({
+      ...jobStoreBase(options, workerConfig),
+      jobId: jobSpec.job_id,
+      workerId: workerConfig.worker_id
+    });
+    if (!lockResult.acquired) {
+      return { processed: false, skipped: lockResult.reason };
+    }
+    executionLock = lockResult.lock;
+    await writeAndPublishStatus({ connection, options, workerConfig, jobSpec, status: "ACCEPTED", reason: null });
+  }
+
+  await onAccepted();
+  try {
+    await handleJob({ jobSpec, connection, workerConfig, options, workerState });
+    return { processed: true };
+  } finally {
+    await releaseJobExecutionLock(executionLock);
   }
 }
 

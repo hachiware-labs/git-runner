@@ -127,6 +127,13 @@ Job delivery modes:
 
 JetStream delivery is at-least-once. The worker acknowledges a JetStream job message after writing the terminal result summary and terminal status. If the worker crashes before acknowledgement, NATS can redeliver the message.
 
+Workers use a local job store execution lock to make duplicate delivery safer:
+
+- The worker that atomically creates `.git-runner/jobs/<job-id>/execution.lock` may execute the command.
+- If another worker already holds the lock, the duplicate delivery does not execute the command.
+- If `result-summary.json` already contains a terminal status, duplicate delivery is skipped and the existing result is preserved.
+- In JetStream mode, terminal-result skips are acknowledged; lock-conflict skips are not acknowledged so JetStream can redeliver if the original worker never reaches a terminal result.
+
 ## 5. Status Transitions
 
 Allowed transitions:
@@ -143,7 +150,7 @@ RUNNING -> CANCELLED
 
 Worker subscribes to `git-runner.cancels.<job-id>` after the job reaches `RUNNING`. A cancellation message moves a running job to `CANCELLED` with reason `cancelled`. If the executor is running, supervisor terminates it before publishing terminal status.
 
-Submitter writes `PENDING` to local job store when job is created. In default core mode, worker writes and publishes `ACCEPTED` before responding to request/reply dispatch. In JetStream mode, worker writes and publishes `ACCEPTED` after pulling the message from its durable consumer. If a worker crashes after acceptance but before validation or execution, the latest status can remain `ACCEPTED`; this means the job was delivered to a worker but no terminal outcome was recorded. Worker publishes `RUNNING` after validating schema and policy.
+Submitter writes `PENDING` to local job store when job is created. In default core mode, worker writes and publishes `ACCEPTED` after acquiring the execution lock and before responding to request/reply dispatch. In JetStream mode, worker writes and publishes `ACCEPTED` after pulling the message from its durable consumer and acquiring the execution lock. If a worker crashes after acceptance but before validation or execution, the latest status can remain `ACCEPTED`; this means the job was delivered to a worker but no terminal outcome was recorded. Worker publishes `RUNNING` after validating schema and policy.
 
 Inspection commands may compute stale diagnostics for `ACCEPTED` without changing the stored status. MVP stale detection is read-only and does not retry jobs.
 

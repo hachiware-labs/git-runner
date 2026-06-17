@@ -31,12 +31,19 @@ Default behavior remains NATS core request/reply. JetStream is opt-in so existin
 
 The submitter publishes the same Job Spec payload to the same routing subject. In JetStream mode the publisher ensures the stream exists and publishes with `msgID` equal to `job_id`.
 
-The worker ensures the stream and durable consumer exist, pulls matching jobs, writes `ACCEPTED`, executes the job, writes terminal status/result, and acknowledges the JetStream message after the job reaches a terminal outcome.
+The worker ensures the stream and durable consumer exist, pulls matching jobs, acquires the local job store execution lock, writes `ACCEPTED`, executes the job, writes terminal status/result, and acknowledges the JetStream message after the job reaches a terminal outcome.
+
+The local job store execution lock is part of the idempotency policy:
+
+- only the worker that creates `.git-runner/jobs/<job-id>/execution.lock` may execute the command;
+- if `result-summary.json` already has a terminal status, redelivery is skipped and acknowledged;
+- if another worker holds the lock and no terminal result exists, JetStream delivery is not acknowledged, preserving future redelivery if the original worker crashes.
 
 ## Consequences
 
 - Users can submit a job before a worker is running, then start a matching JetStream worker later.
 - Delivery becomes at-least-once. A worker crash before ack can redeliver the job, so job commands should tolerate rerun.
+- Duplicate delivery after terminal completion does not rerun the command when workers share the same local job store.
 - The NATS server must be started with JetStream enabled, for example `nats-server -js`.
 - `git-runner` still does not own NATS server lifecycle, clustering, account configuration, or stream operations beyond ensuring the required MVP stream and consumers.
 - The local job store remains the source for `status`, `logs`, and `get`; JetStream is only job delivery in this ADR.

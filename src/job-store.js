@@ -3,6 +3,8 @@ import path from "node:path";
 import { loadProjectConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES } from "./errors.js";
 
+const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+
 export async function resolveJobStore({ cwd, configPath, jobStoreRoot, env }) {
   if (jobStoreRoot) {
     return resolvePath(cwd, jobStoreRoot);
@@ -111,6 +113,51 @@ export async function writeResultSummary({ cwd, configPath, jobStoreRoot, env, s
   return path.join(jobDir, "result-summary.json");
 }
 
+export async function acquireJobExecutionLock({ cwd, configPath, jobStoreRoot, env, jobId, workerId }) {
+  const jobDir = await ensureJobDir({ cwd, configPath, jobStoreRoot, env, jobId });
+  const terminalSummary = await readTerminalResultSummary(jobDir);
+  if (terminalSummary) {
+    return { acquired: false, reason: "terminal", summary: terminalSummary };
+  }
+
+  const lockDir = path.join(jobDir, "execution.lock");
+  try {
+    await mkdir(lockDir);
+    try {
+      await writeFile(path.join(lockDir, "owner.json"), `${JSON.stringify({
+        schema_version: 1,
+        job_id: jobId,
+        worker_id: workerId,
+        pid: process.pid,
+        acquired_at: new Date().toISOString()
+      }, null, 2)}\n`, { flag: "wx" });
+    } catch (error) {
+      await rm(lockDir, { recursive: true, force: true });
+      throw error;
+    }
+    return {
+      acquired: true,
+      lock: { lockDir }
+    };
+  } catch (error) {
+    if (error.code !== "EEXIST") {
+      throw new CliError(`cannot acquire job execution lock for ${jobId}: ${error.message}`, EXIT_CODES.jobStoreFailure);
+    }
+    const summaryAfterConflict = await readTerminalResultSummary(jobDir);
+    if (summaryAfterConflict) {
+      return { acquired: false, reason: "terminal", summary: summaryAfterConflict };
+    }
+    return { acquired: false, reason: "locked", lockDir };
+  }
+}
+
+export async function releaseJobExecutionLock(lock) {
+  if (!lock?.lockDir) {
+    return;
+  }
+  await rm(lock.lockDir, { recursive: true, force: true });
+}
+
 export async function copyJobLogs({ cwd, configPath, jobStoreRoot, env, jobId, stdoutPath, stderrPath }) {
   const jobDir = await ensureJobDir({ cwd, configPath, jobStoreRoot, env, jobId });
   await copyFile(stdoutPath, path.join(jobDir, "stdout.log"));
@@ -121,4 +168,19 @@ export async function removeJobFromStore({ cwd, configPath, jobStoreRoot, env, j
   const storeRoot = await resolveJobStore({ cwd, configPath, jobStoreRoot, env });
   const jobDir = path.join(storeRoot, jobId);
   await rm(jobDir, { recursive: true, force: true });
+}
+
+async function readTerminalResultSummary(jobDir) {
+  try {
+    const summary = JSON.parse(await readFile(path.join(jobDir, "result-summary.json"), "utf8"));
+    return TERMINAL_STATUSES.has(summary.status) ? summary : null;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    if (error instanceof SyntaxError) {
+      throw new CliError(`invalid JSON in job result summary ${jobDir}: ${error.message}`, EXIT_CODES.jobStoreFailure);
+    }
+    throw new CliError(`cannot read job result summary ${jobDir}: ${error.message}`, EXIT_CODES.jobStoreFailure);
+  }
 }

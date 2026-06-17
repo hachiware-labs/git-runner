@@ -119,7 +119,7 @@ node bin/git-runner.js submit --repo . --command "npm test" --jetstream
 node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
 ```
 
-JetStream mode では、`submit` は job を stream `GIT_RUNNER_JOBS` に保存します。一致する worker は submit 後に起動しても job を受け取れます。delivery は at-least-once なので、worker が message ack 前に crash した場合に備えて、command は再実行されてもよい形にする必要があります。
+JetStream mode では、`submit` は job を stream `GIT_RUNNER_JOBS` に保存します。一致する worker は submit 後に起動しても job を受け取れます。delivery は at-least-once です。同じ `job_store_root` を共有する worker は local job store の execution lock で重複実行を避けますが、worker が terminal result を書く前に crash した場合に備えて、command は再実行されてもよい形にする必要があります。
 
 worker が job を accept した後、validation や execution の前に crash した場合、latest status が `ACCEPTED` のまま残ることがあります。これは job が worker に届いたが、terminal result は記録されていない状態を意味します。
 
@@ -185,10 +185,12 @@ MVP では job data を以下に保存します。
   stdout.log
   stderr.log
   result-summary.json
+  execution.lock/
   artifacts/
 ```
 
 `status`、`logs`、`get` はこの local store を読みます。MVP では submitter、worker、inspection commands が同一 host または共有 filesystem を使う前提です。
+`execution.lock/` は内部用で、worker が job execution を所有している間だけ存在します。
 
 ## Git の原則
 

@@ -93,21 +93,24 @@ Submitter never executes the job command.
 3. Worker connects to NATS.
 4. Worker subscribes to job subjects for configured tags, or binds JetStream durable consumers when JetStream delivery is selected.
 5. Worker receives a Job Spec.
-6. Worker writes and publishes `ACCEPTED` when `job_id` is valid.
-7. Worker responds to request/reply dispatch when a reply subject is present.
-8. Worker validates schema and policy.
-9. Worker publishes `RUNNING`.
-10. Worker prepares per-job workspace.
-11. Worker fetches repository and checks out `source.commit` as detached HEAD.
-12. Worker starts executor process.
-13. Worker enforces timeout.
-14. Worker listens for cancellation on `git-runner.cancels.<job-id>` while the executor is running.
-15. Worker maps executor result to terminal status and reason.
-16. Worker validates result file when required.
-17. Worker collects artifacts.
-18. Worker writes terminal result summary.
-19. Worker publishes terminal status and result.
-20. Worker cleans workspace according to cleanup policy.
+6. Worker acquires the job store execution lock when `job_id` is valid.
+7. If a terminal result already exists for the job, worker skips execution.
+8. Worker writes and publishes `ACCEPTED` after acquiring the execution lock.
+9. Worker responds to request/reply dispatch when a reply subject is present.
+10. Worker validates schema and policy.
+11. Worker publishes `RUNNING`.
+12. Worker prepares per-job workspace.
+13. Worker fetches repository and checks out `source.commit` as detached HEAD.
+14. Worker starts executor process.
+15. Worker enforces timeout.
+16. Worker listens for cancellation on `git-runner.cancels.<job-id>` while the executor is running.
+17. Worker maps executor result to terminal status and reason.
+18. Worker validates result file when required.
+19. Worker collects artifacts.
+20. Worker writes terminal result summary.
+21. Worker publishes terminal status and result.
+22. Worker cleans workspace according to cleanup policy.
+23. Worker releases the execution lock.
 
 Worker supervisor never runs setup or entry commands in-process.
 
@@ -136,6 +139,7 @@ MVP uses local filesystem storage:
   stdout.log
   stderr.log
   result-summary.json
+  execution.lock/
   artifacts/
 ```
 
@@ -170,6 +174,8 @@ Out of MVP scope:
 | NATS dispatch/connect failure | CLI or worker | fail command or worker startup; no fake success |
 | worker crash after dispatch acceptance | worker supervisor boundary | latest local status may remain `ACCEPTED`; no automatic retry in MVP |
 | worker crash before JetStream ack | NATS transport / worker supervisor boundary | JetStream may redeliver the job; job command must tolerate at-least-once execution |
+| duplicate delivery while another worker holds lock | local job store | duplicate worker does not execute the command |
+| duplicate delivery after terminal result exists | local job store | duplicate worker skips execution and preserves existing terminal result |
 | invalid Job Spec | worker supervisor | terminal `FAILED` with `job_invalid` |
 | worker policy denial | worker supervisor | terminal `FAILED` with `worker_policy_denied` |
 | clone/fetch/checkout failure | worker supervisor | terminal `FAILED` with `git_checkout_failed` |
