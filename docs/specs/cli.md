@@ -208,10 +208,18 @@ Repository policy:
 ## 6. `git-runner status`
 
 ```bash
-git-runner status <job-id> [--json]
+git-runner status <job-id> [--json] [--stale-after-sec 60]
 ```
 
 Returns latest known status for the job.
+
+If latest status is `ACCEPTED`, `status` computes diagnostic stale metadata from the status `timestamp`:
+
+- `stale`: `true` when accepted age is greater than or equal to `--stale-after-sec`.
+- `age_sec`: accepted status age in seconds.
+- `stale_after_sec`: threshold used for the calculation.
+
+The default `--stale-after-sec` value is `60`. Stale detection does not mutate job status and does not retry the job.
 
 Human output:
 
@@ -222,6 +230,19 @@ reason:
 worker_id: local-001
 commit: <sha>
 started_at: 2026-06-17T00:00:00.000Z
+```
+
+Accepted stale output includes diagnostic fields:
+
+```text
+job_id: job_...
+status: ACCEPTED
+reason:
+worker_id: local-001
+commit: <sha>
+stale: false
+age_sec: 3
+stale_after_sec: 60
 ```
 
 ## 7. `git-runner logs`

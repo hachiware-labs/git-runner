@@ -110,6 +110,8 @@ node bin/git-runner.js get <job-id> --json
 
 worker が job を accept した後、validation や execution の前に crash した場合、latest status が `ACCEPTED` のまま残ることがあります。これは job が worker に届いたが、terminal result は記録されていない状態を意味します。
 
+`status --stale-after-sec <seconds>` で、一定時間進んでいない `ACCEPTED` job を検出できます。これは診断用で、MVP は stale job を自動 retry しません。
+
 ## よく使う command
 
 default config を作成:

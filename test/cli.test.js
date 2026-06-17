@@ -105,11 +105,20 @@ test("status, logs, and get read from local job store", async () => {
     status: "ACCEPTED",
     reason: null,
     worker_id: "local-001",
+    timestamp: "2000-01-01T00:00:00.000Z",
     source: { commit: "abc123" }
   })}\n`);
   const accepted = await runCli(["status", "job_001"], cwd);
   assert.equal(accepted.exitCode, EXIT_CODES.success);
   assert.match(accepted.stdout, /status: ACCEPTED/);
+  assert.match(accepted.stdout, /stale: true/);
+
+  const acceptedJson = await runCli(["status", "job_001", "--json", "--stale-after-sec", "1"], cwd);
+  assert.equal(acceptedJson.exitCode, EXIT_CODES.success);
+  const acceptedStatus = JSON.parse(acceptedJson.stdout);
+  assert.equal(acceptedStatus.stale, true);
+  assert.equal(acceptedStatus.stale_after_sec, 1);
+  assert.ok(acceptedStatus.age_sec > 0);
 
   const logs = await runCli(["logs", "job_001"], cwd);
   assert.equal(logs.exitCode, EXIT_CODES.success);
@@ -167,6 +176,14 @@ test("missing job returns job store failure exit code", async () => {
 
   assert.equal(result.exitCode, EXIT_CODES.jobStoreFailure);
   assert.match(result.stderr, /job not found/);
+});
+
+test("status rejects invalid stale threshold", async () => {
+  const cwd = await tempDir();
+  const result = await runCli(["status", "job_001", "--stale-after-sec", "0"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.invalidUsage);
+  assert.match(result.stderr, /--stale-after-sec/);
 });
 
 test("worker refuses to start without worker key", async () => {

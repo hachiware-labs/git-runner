@@ -47,6 +47,12 @@ Important: the MVP uses NATS core request/reply for default job dispatch, not a 
 
 If a worker accepts a job and then crashes before validation or execution, `status <job-id>` may remain `ACCEPTED`. In the MVP this is diagnostic only; automatic retry is not performed.
 
+To flag an accepted job as stale after 30 seconds:
+
+```bash
+node bin/git-runner.js status <job-id> --stale-after-sec 30
+```
+
 ## 3. Initialize git-runner Config
 
 Create the default config:

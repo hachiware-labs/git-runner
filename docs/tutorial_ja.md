@@ -47,6 +47,12 @@ NATS server が別 URL の場合は、`submit` と `worker` の両方に `--nats
 
 worker が job を accept した後、validation や execution の前に crash した場合、`status <job-id>` が `ACCEPTED` のまま残ることがあります。MVP では診断用の状態で、自動 retry は行いません。
 
+accepted job を 30 秒で stale と判定する例:
+
+```bash
+node bin/git-runner.js status <job-id> --stale-after-sec 30
+```
+
 ## 3. git-runner config を初期化する
 
 default config を作成します。

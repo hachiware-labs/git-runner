@@ -110,6 +110,8 @@ Important: the MVP uses NATS core request/reply for default job dispatch, not a 
 
 If a worker accepts a job and then crashes before validation or execution, the latest status may remain `ACCEPTED`. That indicates the job was delivered to a worker but no terminal result was recorded.
 
+Use `status --stale-after-sec <seconds>` to detect an `ACCEPTED` job that has not advanced. This is diagnostic only; the MVP does not retry stale jobs automatically.
+
 ## Common Commands
 
 Create default config:

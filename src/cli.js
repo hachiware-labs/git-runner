@@ -23,6 +23,7 @@ Common options:
   --json                    Print machine-readable JSON
   --help                    Show help
 `;
+const DEFAULT_ACCEPTED_STALE_AFTER_SEC = 60;
 
 export async function main(argv, context) {
   try {
@@ -136,6 +137,10 @@ function parseArgs(argv) {
         break;
       case "--timeout-sec":
         options.timeoutSec = Number(requireValue(argv, index, arg));
+        index += 1;
+        break;
+      case "--stale-after-sec":
+        options.staleAfterSec = Number(requireValue(argv, index, arg));
         index += 1;
         break;
       case "--nats-url":
@@ -321,7 +326,10 @@ async function commandSubmit(args, context) {
 
 async function commandStatus(args, context) {
   if (args.help) {
-    return "git-runner status <job-id> [--json] [--job-store-root .git-runner/jobs]\n";
+    return "git-runner status <job-id> [--json] [--stale-after-sec 60] [--job-store-root .git-runner/jobs]\n";
+  }
+  if (args.staleAfterSec !== undefined && (!Number.isInteger(args.staleAfterSec) || args.staleAfterSec <= 0)) {
+    throw new CliError("--stale-after-sec must be a positive integer", EXIT_CODES.invalidUsage);
   }
   const jobId = requireJobId(args);
   const result = await readJobJson({
@@ -332,8 +340,11 @@ async function commandStatus(args, context) {
     jobId,
     fileName: "status.json"
   });
+  const status = annotateStatus(result.value, {
+    staleAfterSec: args.staleAfterSec ?? DEFAULT_ACCEPTED_STALE_AFTER_SEC
+  });
 
-  return args.json ? result.value : formatStatus(result.value);
+  return args.json ? status : formatStatus(status);
 }
 
 async function commandWorker(args, context) {
@@ -523,8 +534,34 @@ function formatStatus(status) {
   if (status.updated_at) {
     lines.push(`updated_at: ${status.updated_at}`);
   }
+  if (typeof status.stale === "boolean") {
+    lines.push(`stale: ${status.stale}`);
+  }
+  if (status.age_sec !== undefined) {
+    lines.push(`age_sec: ${status.age_sec}`);
+  }
+  if (status.stale_after_sec !== undefined) {
+    lines.push(`stale_after_sec: ${status.stale_after_sec}`);
+  }
 
   return `${lines.join("\n")}\n`;
+}
+
+function annotateStatus(status, { staleAfterSec }) {
+  if (status.status !== "ACCEPTED" || !status.timestamp) {
+    return status;
+  }
+  const timestampMs = Date.parse(status.timestamp);
+  if (!Number.isFinite(timestampMs)) {
+    return status;
+  }
+  const ageSec = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
+  return {
+    ...status,
+    stale: ageSec >= staleAfterSec,
+    age_sec: ageSec,
+    stale_after_sec: staleAfterSec
+  };
 }
 
 function writeOutput(stream, value) {

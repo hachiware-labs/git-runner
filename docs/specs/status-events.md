@@ -137,6 +137,8 @@ Worker subscribes to `git-runner.cancels.<job-id>` after the job reaches `RUNNIN
 
 Submitter writes `PENDING` to local job store when job is created. Worker writes and publishes `ACCEPTED` before responding to request/reply dispatch. If a worker crashes after acceptance but before validation or execution, the latest status can remain `ACCEPTED`; this means the job was delivered to a worker but no terminal outcome was recorded. Worker publishes `RUNNING` after validating schema and policy.
 
+Inspection commands may compute stale diagnostics for `ACCEPTED` without changing the stored status. MVP stale detection is read-only and does not retry jobs.
+
 ## 6. Heartbeat
 
 Worker heartbeat:
