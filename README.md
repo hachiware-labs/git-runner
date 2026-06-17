@@ -9,9 +9,10 @@ Current implementation status:
 - implemented: `git-runner status <job-id>` against local job store
 - implemented: `git-runner logs <job-id>` against local job store
 - implemented: `git-runner get <job-id>` against local job store
-- not yet implemented: `submit`
+- implemented: `git-runner submit --dry-run`
+- implemented: `git-runner submit` NATS publish path
 - not yet implemented: `worker`
-- not yet implemented: NATS publish/subscribe
+- not yet implemented: NATS subscribe
 - not yet implemented: executor process
 
 ## Quick Start
@@ -33,6 +34,12 @@ Run checks:
 ```bash
 npm run check
 npm test
+```
+
+Inspect the Job Spec that `submit` would publish:
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test" --dry-run --json
 ```
 
 ## Local Job Store

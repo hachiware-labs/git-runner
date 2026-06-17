@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import { main } from "../src/cli.js";
 import { EXIT_CODES } from "../src/errors.js";
+
+const execFileAsync = promisify(execFile);
 
 function memoryStream() {
   return {
@@ -29,6 +33,26 @@ async function runCli(argv, cwd) {
 
 async function tempDir() {
   return mkdtemp(path.join(os.tmpdir(), "git-runner-test-"));
+}
+
+async function git(cwd, args) {
+  const result = await execFileAsync("git", args, { cwd, windowsHide: true });
+  return result.stdout.trim();
+}
+
+async function createGitRepo() {
+  const repo = await tempDir();
+  await git(repo, ["init"]);
+  await git(repo, ["config", "user.name", "Test User"]);
+  await git(repo, ["config", "user.email", "test@example.com"]);
+  await writeFile(path.join(repo, "file.txt"), "one\n");
+  await git(repo, ["add", "file.txt"]);
+  await git(repo, ["commit", "-m", "initial"]);
+  return repo;
+}
+
+async function head(repo) {
+  return git(repo, ["rev-parse", "HEAD"]);
 }
 
 test("init creates default project config and does not overwrite it", async () => {
@@ -91,4 +115,95 @@ test("missing job returns job store failure exit code", async () => {
 
   assert.equal(result.exitCode, EXIT_CODES.jobStoreFailure);
   assert.match(result.stderr, /job not found/);
+});
+
+test("submit dry-run resolves current HEAD into a Job Spec", async () => {
+  const repo = await createGitRepo();
+  const expectedCommit = await head(repo);
+
+  const result = await runCli(["submit", "--repo", repo, "--command", "npm test", "--dry-run", "--json"], repo);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.dry_run, true);
+  assert.equal(output.commit, expectedCommit);
+  assert.equal(output.subject, "git-runner.jobs.default");
+  assert.equal(output.job_spec.source.commit, expectedCommit);
+  assert.equal(output.job_spec.source.repo, repo);
+  assert.equal(output.job_spec.entry.command, "npm test");
+});
+
+test("submit dry-run resolves branch when commit is not provided", async () => {
+  const repo = await createGitRepo();
+  const mainCommit = await head(repo);
+  await git(repo, ["checkout", "-b", "experiment"]);
+  await writeFile(path.join(repo, "file.txt"), "two\n");
+  await git(repo, ["add", "file.txt"]);
+  await git(repo, ["commit", "-m", "experiment"]);
+  const experimentCommit = await head(repo);
+  await git(repo, ["checkout", mainCommit]);
+
+  const result = await runCli([
+    "submit",
+    "--repo",
+    repo,
+    "--branch",
+    "experiment",
+    "--command",
+    "npm test",
+    "--dry-run",
+    "--json"
+  ], repo);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.commit, experimentCommit);
+  assert.equal(output.job_spec.source.branch, "experiment");
+});
+
+test("submit dry-run gives explicit commit precedence over branch", async () => {
+  const repo = await createGitRepo();
+  const explicitCommit = await head(repo);
+  await git(repo, ["checkout", "-b", "experiment"]);
+  await writeFile(path.join(repo, "file.txt"), "two\n");
+  await git(repo, ["add", "file.txt"]);
+  await git(repo, ["commit", "-m", "experiment"]);
+
+  const result = await runCli([
+    "submit",
+    "--repo",
+    repo,
+    "--branch",
+    "experiment",
+    "--commit",
+    explicitCommit,
+    "--command",
+    "npm test",
+    "--dry-run",
+    "--json"
+  ], repo);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.commit, explicitCommit);
+  assert.equal(output.job_spec.source.branch, "experiment");
+});
+
+test("submit dry-run warns when working tree is dirty without commit-and-push", async () => {
+  const repo = await createGitRepo();
+  await writeFile(path.join(repo, "dirty.txt"), "dirty\n");
+
+  const result = await runCli(["submit", "--repo", repo, "--command", "npm test", "--dry-run", "--json"], repo);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  assert.match(result.stderr, /uncommitted changes/);
+});
+
+test("submit fails with git exit code for non-repository path", async () => {
+  const cwd = await tempDir();
+
+  const result = await runCli(["submit", "--repo", cwd, "--command", "npm test", "--dry-run"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.gitFailure);
+  assert.match(result.stderr, /git rev-parse --show-toplevel failed/);
 });

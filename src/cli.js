@@ -1,11 +1,17 @@
-import { initProjectConfig } from "./config.js";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { initProjectConfig, loadProjectConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES, formatError } from "./errors.js";
-import { readJobJson, readJobText } from "./job-store.js";
+import { commitAndPush, inspectRepository, isWorkingTreeDirty, resolveExecutionCommit } from "./git.js";
+import { buildJobSpec, createJobId, subjectForJob } from "./job-spec.js";
+import { readJobJson, readJobText, removeJobFromStore, writeSubmitJob } from "./job-store.js";
+import { publishJob } from "./nats-publisher.js";
 
 const HELP = `git-runner <command> [options]
 
 Commands:
   init                 Create .git-runner/config.json
+  submit               Resolve Git ref, build Job Spec, and publish it
   status <job-id>      Read .git-runner/jobs/<job-id>/status.json
   logs <job-id>        Read stdout/stderr logs from local job store
   get <job-id>         Read result-summary.json from local job store
@@ -41,13 +47,14 @@ export async function run(argv, context) {
   switch (command) {
     case "init":
       return commandInit(args, context);
+    case "submit":
+      return commandSubmit(args, context);
     case "status":
       return commandStatus(args, context);
     case "logs":
       return commandLogs(args, context);
     case "get":
       return commandGet(args, context);
-    case "submit":
     case "worker":
       throw new CliError(`${command} is not implemented in this vertical slice`, EXIT_CODES.invalidUsage);
     default:
@@ -76,6 +83,60 @@ function parseArgs(argv) {
         break;
       case "--json":
         options.json = true;
+        break;
+      case "--dry-run":
+        options.dryRun = true;
+        break;
+      case "--repo":
+        options.repo = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--command":
+        options.command = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--branch":
+        options.branch = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--commit":
+        options.commit = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--commit-and-push":
+        options.commitAndPush = true;
+        break;
+      case "--working-dir":
+        options.workingDir = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--params":
+        options.paramsPath = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--message":
+        options.message = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--result-path":
+        options.resultPath = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--result-schema":
+        options.resultSchema = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--worker-tags":
+        options.workerTags = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--timeout-sec":
+        options.timeoutSec = Number(requireValue(argv, index, arg));
+        index += 1;
+        break;
+      case "--nats-url":
+        options.natsUrl = requireValue(argv, index, arg);
+        index += 1;
         break;
       case "--stdout":
         options.stdout = true;
@@ -125,6 +186,94 @@ async function commandInit(args, context) {
   return result.created
     ? `created config: ${result.path}\n`
     : `config already exists: ${result.path}\n`;
+}
+
+async function commandSubmit(args, context) {
+  if (args.help) {
+    return "git-runner submit --command <command> [--repo .] [--branch name] [--commit sha] [--dry-run] [--json]\n";
+  }
+  if (!args.command) {
+    throw new CliError("missing required option: --command", EXIT_CODES.invalidUsage);
+  }
+  if (args.timeoutSec !== undefined && (!Number.isInteger(args.timeoutSec) || args.timeoutSec <= 0)) {
+    throw new CliError("--timeout-sec must be a positive integer", EXIT_CODES.invalidUsage);
+  }
+
+  const { config } = await loadProjectConfig({
+    cwd: context.cwd,
+    configPath: args.configPath,
+    env: context.env
+  });
+  const repoInput = args.repo ?? ".";
+  const repoPath = resolvePath(context.cwd, repoInput);
+  const repoRoot = await inspectRepository(repoPath);
+  const jobId = createJobId();
+
+  let branch = args.branch;
+  if (args.commitAndPush) {
+    branch = await commitAndPush({
+      repoRoot,
+      branch,
+      message: args.message ?? `git-runner submit ${jobId}`
+    });
+  } else if (await isWorkingTreeDirty(repoRoot)) {
+    context.stderr.write("warning: working tree has uncommitted changes; submit uses committed Git state only\n");
+  }
+
+  const commit = await resolveExecutionCommit({
+    repoRoot,
+    commit: args.commit,
+    branch
+  });
+  const params = await loadParams({ cwd: context.cwd, paramsPath: args.paramsPath });
+  const outputs = buildOutputs(config.outputs, args);
+  const execution = {
+    ...config.execution,
+    ...(args.timeoutSec ? { timeout_sec: args.timeoutSec } : {})
+  };
+  const workerTags = parseTags(args.workerTags) ?? config.default_worker_tags ?? ["default"];
+  const jobSpec = buildJobSpec({
+    jobId,
+    repo: repoRoot,
+    branch,
+    commit,
+    command: args.command,
+    workingDir: args.workingDir ?? ".",
+    params,
+    paramPassing: config.param_passing,
+    outputs,
+    execution,
+    workerTags
+  });
+  const subject = subjectForJob(jobSpec);
+  const natsUrl = args.natsUrl ?? config.nats_url;
+
+  if (args.dryRun) {
+    return formatSubmitResult({ args, jobSpec, subject, dryRun: true });
+  }
+
+  await writeSubmitJob({
+    cwd: context.cwd,
+    configPath: args.configPath,
+    jobStoreRoot: args.jobStoreRoot,
+    env: context.env,
+    jobSpec
+  });
+
+  try {
+    await publishJob({ natsUrl, subject, jobSpec });
+  } catch (error) {
+    await removeJobFromStore({
+      cwd: context.cwd,
+      configPath: args.configPath,
+      jobStoreRoot: args.jobStoreRoot,
+      env: context.env,
+      jobId
+    });
+    throw error;
+  }
+
+  return formatSubmitResult({ args, jobSpec, subject, dryRun: false });
 }
 
 async function commandStatus(args, context) {
@@ -201,6 +350,75 @@ function requireJobId(args) {
     throw new CliError("missing job id", EXIT_CODES.invalidUsage);
   }
   return jobId;
+}
+
+async function loadParams({ cwd, paramsPath }) {
+  if (!paramsPath) {
+    return {};
+  }
+  const absolutePath = resolvePath(cwd, paramsPath);
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(absolutePath, "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new CliError(`invalid JSON params file ${absolutePath}: ${error.message}`, EXIT_CODES.invalidUsage);
+    }
+    throw new CliError(`cannot read params file ${absolutePath}: ${error.message}`, EXIT_CODES.invalidUsage);
+  }
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new CliError(`params file must contain a JSON object: ${absolutePath}`, EXIT_CODES.invalidUsage);
+  }
+  return parsed;
+}
+
+function buildOutputs(configOutputs, args) {
+  const result = {
+    ...(configOutputs?.result ?? {
+      path: ".git-runner/result.json",
+      schema: { type: "none" }
+    })
+  };
+  if (args.resultPath) {
+    result.path = args.resultPath;
+  }
+  if (args.resultSchema) {
+    result.schema = {
+      type: "json_schema",
+      file: args.resultSchema
+    };
+  }
+  return {
+    result,
+    artifacts: configOutputs?.artifacts ?? []
+  };
+}
+
+function parseTags(input) {
+  if (!input) {
+    return null;
+  }
+  const tags = input.split(",").map((tag) => tag.trim()).filter(Boolean);
+  if (tags.length === 0) {
+    throw new CliError("--worker-tags must include at least one tag", EXIT_CODES.invalidUsage);
+  }
+  return tags;
+}
+
+function formatSubmitResult({ args, jobSpec, subject, dryRun }) {
+  const result = {
+    job_id: jobSpec.job_id,
+    commit: jobSpec.source.commit,
+    subject,
+    ...(dryRun ? { dry_run: true, job_spec: jobSpec } : {})
+  };
+  if (args.json) {
+    return result;
+  }
+  if (dryRun) {
+    return `${JSON.stringify(result, null, 2)}\n`;
+  }
+  return `job_id: ${result.job_id}\ncommit: ${result.commit}\nsubject: ${result.subject}\n`;
 }
 
 function formatStatus(status) {

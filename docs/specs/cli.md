@@ -87,7 +87,8 @@ git-runner submit \
   [--result-path .git-runner/result.json] \
   [--result-schema schemas/result.schema.json] \
   [--worker-tags default] \
-  [--timeout-sec 3600]
+  [--timeout-sec 3600] \
+  [--dry-run]
 ```
 
 ### 4.1 Required Inputs
@@ -119,6 +120,10 @@ If both `--commit` and `--branch` are provided, `--commit` wins.
 If `--commit-and-push` is provided while HEAD is detached and `--branch` is not provided, submit fails with a clear error.
 
 ### 4.3 Job Publish
+
+If `--dry-run` is provided, submit resolves Git state and builds the Job Spec, then prints it without writing local job store files and without publishing to NATS.
+
+If `--dry-run` is not provided, submit writes local pending job metadata and publishes the Job Spec.
 
 Submit builds a Job Spec and publishes it to:
 

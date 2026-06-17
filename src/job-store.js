@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadProjectConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES } from "./errors.js";
@@ -55,4 +55,39 @@ export async function readJobText({ cwd, configPath, jobStoreRoot, env, jobId, f
     }
     throw new CliError(`cannot read job log ${filePath}: ${error.message}`, EXIT_CODES.jobStoreFailure);
   }
+}
+
+export async function writeSubmitJob({ cwd, configPath, jobStoreRoot, env, jobSpec }) {
+  const storeRoot = await resolveJobStore({ cwd, configPath, jobStoreRoot, env });
+  const jobDir = path.join(storeRoot, jobSpec.job_id);
+  const now = new Date().toISOString();
+  const status = {
+    schema_version: 1,
+    event_type: "status",
+    job_id: jobSpec.job_id,
+    status: "PENDING",
+    reason: null,
+    worker_id: null,
+    timestamp: now,
+    source: jobSpec.source
+  };
+
+  try {
+    await mkdir(jobDir, { recursive: true });
+    await writeFile(path.join(jobDir, "job-spec.json"), `${JSON.stringify(jobSpec, null, 2)}\n`, { flag: "wx" });
+    await writeFile(path.join(jobDir, "status.json"), `${JSON.stringify(status, null, 2)}\n`, { flag: "wx" });
+  } catch (error) {
+    throw new CliError(`cannot write local job store for ${jobSpec.job_id}: ${error.message}`, EXIT_CODES.jobStoreFailure);
+  }
+
+  return {
+    jobDir,
+    status
+  };
+}
+
+export async function removeJobFromStore({ cwd, configPath, jobStoreRoot, env, jobId }) {
+  const storeRoot = await resolveJobStore({ cwd, configPath, jobStoreRoot, env });
+  const jobDir = path.join(storeRoot, jobId);
+  await rm(jobDir, { recursive: true, force: true });
 }

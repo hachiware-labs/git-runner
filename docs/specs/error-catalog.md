@@ -48,6 +48,8 @@ MVP does not perform automatic retry. Users can submit a new job explicitly.
 | config file invalid JSON | any using config | `2` | no | config path and parse error |
 | unsupported config schema | any using config | `2` | no | schema version |
 | `submit --command` missing | `submit` | `2` | no | `--command` |
+| `submit --timeout-sec` is not a positive integer | `submit` | `2` | no | `--timeout-sec` |
+| params file is missing, unreadable, invalid JSON, or not an object | `submit` | `2` | no | params path |
 | `submit --repo` is not a Git repository | `submit` | `3` | no | repo path |
 | `submit --commit` cannot be resolved | `submit` | `3` | no | commit value |
 | `submit --branch` cannot be resolved | `submit` | `3` | no | branch value |
