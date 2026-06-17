@@ -133,7 +133,8 @@ Executor responsibilities:
 6. Write stderr to `.git-runner/stderr.log`.
 7. Record exit code, signal, and duration.
 8. Read result file if present.
-9. Return an executor summary to supervisor.
+9. Write `.git-runner/executor-summary.json`.
+10. Return an executor summary to supervisor.
 
 Supervisor responsibilities:
 
@@ -142,6 +143,22 @@ Supervisor responsibilities:
 3. Kill executor on timeout.
 4. Capture process-level failure.
 5. Convert executor outcome to job status.
+
+Executor summary file:
+
+```json
+{
+  "exit_code": 0,
+  "signal": null,
+  "duration_ms": 12345,
+  "stdout_bytes": 1000,
+  "stderr_bytes": 100,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "result": {},
+  "result_warnings": []
+}
+```
 
 ## 7. Timeout
 

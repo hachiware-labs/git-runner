@@ -30,6 +30,18 @@ export async function isWorkingTreeDirty(repoRoot) {
   return result.stdout.trim().length > 0;
 }
 
+export async function cloneRepository({ repo, destination }) {
+  await git(["clone", repo, destination], { cwd: process.cwd() });
+}
+
+export async function fetchRepository(repoRoot) {
+  await git(["fetch", "origin"], { cwd: repoRoot });
+}
+
+export async function checkoutDetached({ repoRoot, commit }) {
+  await git(["checkout", "--detach", commit], { cwd: repoRoot });
+}
+
 export async function commitAndPush({ repoRoot, branch, message }) {
   let targetBranch = branch;
 

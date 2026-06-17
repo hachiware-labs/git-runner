@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadProjectConfig, resolvePath } from "./config.js";
 import { CliError, EXIT_CODES } from "./errors.js";
@@ -84,6 +84,37 @@ export async function writeSubmitJob({ cwd, configPath, jobStoreRoot, env, jobSp
     jobDir,
     status
   };
+}
+
+export async function ensureJobDir({ cwd, configPath, jobStoreRoot, env, jobId }) {
+  const storeRoot = await resolveJobStore({ cwd, configPath, jobStoreRoot, env });
+  const jobDir = path.join(storeRoot, jobId);
+  await mkdir(jobDir, { recursive: true });
+  return jobDir;
+}
+
+export async function writeJobStatus({ cwd, configPath, jobStoreRoot, env, status }) {
+  const jobDir = await ensureJobDir({ cwd, configPath, jobStoreRoot, env, jobId: status.job_id });
+  await writeFile(path.join(jobDir, "status.json"), `${JSON.stringify(status, null, 2)}\n`);
+  return path.join(jobDir, "status.json");
+}
+
+export async function writeJobSpec({ cwd, configPath, jobStoreRoot, env, jobSpec }) {
+  const jobDir = await ensureJobDir({ cwd, configPath, jobStoreRoot, env, jobId: jobSpec.job_id });
+  await writeFile(path.join(jobDir, "job-spec.json"), `${JSON.stringify(jobSpec, null, 2)}\n`);
+  return path.join(jobDir, "job-spec.json");
+}
+
+export async function writeResultSummary({ cwd, configPath, jobStoreRoot, env, summary }) {
+  const jobDir = await ensureJobDir({ cwd, configPath, jobStoreRoot, env, jobId: summary.job_id });
+  await writeFile(path.join(jobDir, "result-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
+  return path.join(jobDir, "result-summary.json");
+}
+
+export async function copyJobLogs({ cwd, configPath, jobStoreRoot, env, jobId, stdoutPath, stderrPath }) {
+  const jobDir = await ensureJobDir({ cwd, configPath, jobStoreRoot, env, jobId });
+  await copyFile(stdoutPath, path.join(jobDir, "stdout.log"));
+  await copyFile(stderrPath, path.join(jobDir, "stderr.log"));
 }
 
 export async function removeJobFromStore({ cwd, configPath, jobStoreRoot, env, jobId }) {

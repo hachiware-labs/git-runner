@@ -3,6 +3,7 @@ import path from "node:path";
 import { CliError, EXIT_CODES } from "./errors.js";
 
 export const DEFAULT_CONFIG_PATH = ".git-runner/config.json";
+export const DEFAULT_WORKER_CONFIG_PATH = ".git-runner/worker.json";
 
 export function defaultProjectConfig() {
   return {
@@ -28,6 +29,23 @@ export function defaultProjectConfig() {
       max_stderr_bytes: 10485760
     },
     job_store_root: ".git-runner/jobs"
+  };
+}
+
+export function defaultWorkerConfig() {
+  return {
+    schema_version: 1,
+    worker_id: null,
+    tags: ["default"],
+    allowed_tags: ["default"],
+    allowed_repos: [],
+    allow_all_repos: false,
+    workspace_root: ".git-runner/workspaces",
+    repo_cache_root: ".git-runner/repo-cache",
+    job_store_root: ".git-runner/jobs",
+    cleanup: {
+      mode: "after_job"
+    }
   };
 }
 
@@ -100,6 +118,40 @@ export async function loadProjectConfig({ cwd, configPath = DEFAULT_CONFIG_PATH,
 
   if (env.GIT_RUNNER_NATS_URL) {
     config.nats_url = env.GIT_RUNNER_NATS_URL;
+  }
+
+  return {
+    path: absolutePath,
+    config
+  };
+}
+
+export async function loadWorkerConfig({ cwd, configPath = DEFAULT_WORKER_CONFIG_PATH }) {
+  const absolutePath = resolvePath(cwd, configPath);
+  let config = defaultWorkerConfig();
+
+  try {
+    const raw = await readFile(absolutePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed.schema_version !== 1) {
+      throw new CliError(`unsupported worker config schema_version in ${absolutePath}: ${parsed.schema_version}`, EXIT_CODES.invalidUsage);
+    }
+    config = {
+      ...config,
+      ...parsed,
+      cleanup: {
+        ...config.cleanup,
+        ...(parsed.cleanup ?? {})
+      }
+    };
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      config = defaultWorkerConfig();
+    } else if (error instanceof SyntaxError) {
+      throw new CliError(`invalid JSON in worker config ${absolutePath}: ${error.message}`, EXIT_CODES.invalidUsage);
+    } else {
+      throw error;
+    }
   }
 
   return {

@@ -11,9 +11,9 @@ Current implementation status:
 - implemented: `git-runner get <job-id>` against local job store
 - implemented: `git-runner submit --dry-run`
 - implemented: `git-runner submit` NATS publish path
-- not yet implemented: `worker`
-- not yet implemented: NATS subscribe
-- not yet implemented: executor process
+- implemented: `git-runner worker --once`
+- implemented: NATS subscribe
+- implemented: executor process
 
 ## Quick Start
 
@@ -40,6 +40,12 @@ Inspect the Job Spec that `submit` would publish:
 
 ```bash
 node bin/git-runner.js submit --repo . --command "npm test" --dry-run --json
+```
+
+Run a one-job worker:
+
+```bash
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
 ```
 
 ## Local Job Store

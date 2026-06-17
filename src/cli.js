@@ -6,6 +6,7 @@ import { commitAndPush, inspectRepository, isWorkingTreeDirty, resolveExecutionC
 import { buildJobSpec, createJobId, subjectForJob } from "./job-spec.js";
 import { readJobJson, readJobText, removeJobFromStore, writeSubmitJob } from "./job-store.js";
 import { publishJob } from "./nats-publisher.js";
+import { runWorker } from "./worker.js";
 
 const HELP = `git-runner <command> [options]
 
@@ -56,7 +57,7 @@ export async function run(argv, context) {
     case "get":
       return commandGet(args, context);
     case "worker":
-      throw new CliError(`${command} is not implemented in this vertical slice`, EXIT_CODES.invalidUsage);
+      return commandWorker(args, context);
     default:
       throw new CliError(`unknown command: ${command}\n\n${HELP}`, EXIT_CODES.invalidUsage);
   }
@@ -137,6 +138,33 @@ function parseArgs(argv) {
       case "--nats-url":
         options.natsUrl = requireValue(argv, index, arg);
         index += 1;
+        break;
+      case "--worker-id":
+        options.workerId = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--worker-key":
+        options.workerKey = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--tags":
+        options.tags = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--allow-repo":
+        options.allowRepos ??= [];
+        options.allowRepos.push(requireValue(argv, index, arg));
+        index += 1;
+        break;
+      case "--allow-all-repos":
+        options.allowAllRepos = true;
+        break;
+      case "--workspace-root":
+        options.workspaceRoot = requireValue(argv, index, arg);
+        index += 1;
+        break;
+      case "--once":
+        options.once = true;
         break;
       case "--stdout":
         options.stdout = true;
@@ -291,6 +319,27 @@ async function commandStatus(args, context) {
   });
 
   return args.json ? result.value : formatStatus(result.value);
+}
+
+async function commandWorker(args, context) {
+  if (args.help) {
+    return "git-runner worker --worker-id <id> --worker-key <key> [--tags default] [--allow-repo repo] [--allow-all-repos] [--once]\n";
+  }
+  await runWorker({
+    cwd: context.cwd,
+    env: context.env,
+    configPath: args.configPath,
+    natsUrl: args.natsUrl,
+    workerId: args.workerId,
+    workerKey: args.workerKey,
+    tags: args.tags,
+    allowRepos: args.allowRepos,
+    allowAllRepos: args.allowAllRepos,
+    workspaceRoot: args.workspaceRoot,
+    jobStoreRoot: args.jobStoreRoot,
+    once: args.once
+  });
+  return args.once ? "worker processed one job\n" : undefined;
 }
 
 async function commandLogs(args, context) {

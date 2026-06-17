@@ -167,6 +167,7 @@ git-runner worker \
   [--tags default,gpu-large] \
   [--allow-repo git@github.com:user/project.git] \
   [--allow-all-repos] \
+  [--once] \
   [--job-store-root .git-runner/jobs] \
   [--config .git-runner/worker.json]
 ```
@@ -187,6 +188,8 @@ Behavior:
 7. Start executor process.
 8. Publish status/log/result events.
 9. Return to idle state after terminal job status.
+
+If `--once` is provided, worker exits after one accepted job reaches a terminal status. Without `--once`, worker stays subscribed.
 
 Repository policy:
 
