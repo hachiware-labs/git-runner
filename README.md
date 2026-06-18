@@ -246,16 +246,13 @@ Run checks:
 
 ```bash
 npm run check
+npm run test:local
 npm test
 ```
 
-The test suite includes local CLI tests plus NATS-backed integration tests when a local NATS server binary is available.
+Use `npm run check` after code edits to catch syntax errors quickly. Use `npm run test:local` for the usual fast NATS-free loop; it covers `local run`, Result Bundle validation, executor behavior, and local job-store reads. Use `npm test` before pushing or when touching submit/worker/NATS behavior; it includes local tests plus NATS-backed integration tests when a local NATS server binary is available.
 
-For a faster NATS-free loop that focuses on `local run`, Result Bundle validation, executor behavior, and local job-store reads:
-
-```bash
-npm run test:local
-```
+CI runs the same order: syntax check, local contract tests, then the full test suite.
 
 ## Documentation
 

@@ -246,16 +246,13 @@ MVP では job data を以下に保存します。
 
 ```bash
 npm run check
+npm run test:local
 npm test
 ```
 
-test suite には local CLI tests と、local NATS server binary が利用できる場合の NATS integration tests が含まれます。
+code edit 後の構文確認には `npm run check` を使います。普段の高速確認には `npm run test:local` を使います。これは `local run`、Result Bundle validation、executor、local job-store reads を NATS なしで確認します。push 前、または submit / worker / NATS 周辺を触った場合は `npm test` を使います。`npm test` には local tests と、local NATS server binary が利用できる場合の NATS-backed integration tests が含まれます。
 
-`local run`、Result Bundle validation、executor、local job-store reads を NATS なしで素早く確認する場合:
-
-```bash
-npm run test:local
-```
+CI も同じ順序で、syntax check、local contract tests、full test suite を実行します。
 
 ## Documentation
 
