@@ -14,6 +14,7 @@ import {
 } from "./job-store.js";
 import { runLocalJob } from "./local-runner.js";
 import { publishJob } from "./nats-publisher.js";
+import { buildResultBundleFromSummary, DEFAULT_RESULT_BUNDLE_FILE, writeResultBundle } from "./result-bundle.js";
 import { runWorker } from "./worker.js";
 
 const HELP = `git-runner <command> [options]
@@ -106,8 +107,11 @@ function parseArgs(argv) {
         index += 1;
         break;
       case "--bundle":
-        options.bundlePath = requireValue(argv, index, arg);
-        index += 1;
+        options.bundle = true;
+        if (argv[index + 1] && !argv[index + 1].startsWith("--")) {
+          options.bundlePath = argv[index + 1];
+          index += 1;
+        }
         break;
       case "--json":
         options.json = true;
@@ -512,7 +516,7 @@ async function commandLogs(args, context) {
 
 async function commandGet(args, context) {
   if (args.help) {
-    return "git-runner get <job-id> [--json] [--job-store-root .git-runner/jobs]\n";
+    return "git-runner get <job-id> [--json] [--bundle [path]] [--job-store-root .git-runner/jobs]\n";
   }
   const jobId = requireJobId(args);
   const result = await readJobJson({
@@ -523,6 +527,28 @@ async function commandGet(args, context) {
     jobId,
     fileName: "result-summary.json"
   });
+
+  if (args.bundle) {
+    const jobSpec = await readJobJson({
+      cwd: context.cwd,
+      configPath: args.configPath,
+      jobStoreRoot: args.jobStoreRoot,
+      env: context.env,
+      jobId,
+      fileName: "job-spec.json"
+    });
+    const bundle = buildResultBundleFromSummary({
+      summary: result.value,
+      jobSpec: jobSpec.value
+    });
+    const bundlePath = args.bundlePath
+      ? resolvePath(context.cwd, args.bundlePath)
+      : path.join(path.dirname(result.path), DEFAULT_RESULT_BUNDLE_FILE);
+    await writeResultBundle(bundlePath, bundle);
+    return args.json
+      ? bundle
+      : `result_bundle: ${bundlePath}\nstatus: ${bundle.status}\nreason: ${bundle.reason ?? ""}\n`;
+  }
 
   if (args.outputDir) {
     await copyArtifactsToOutput({

@@ -195,7 +195,7 @@
               "type": "boolean"
             },
             "emitted_by": {
-              "const": "git-runner local run"
+              "enum": ["git-runner local run", "git-runner get --bundle"]
             },
             "details": {
               "type": "array"

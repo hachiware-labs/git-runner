@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CliError, EXIT_CODES } from "./errors.js";
 import { resolveInside } from "./path-utils.js";
-import { assertResultBundle } from "./result-bundle-validator.js";
+import { writeResultBundle } from "./result-bundle.js";
 
 const DEFAULT_BUNDLE_PATH = ".git-runner/result-bundle.json";
 const DEFAULT_WORKER_ID = "local-001";
@@ -40,7 +40,7 @@ export async function runLocalJob({ cwd, jobPath, workspace = ".", bundlePath = 
         reason: "invalid_job_spec",
         message: error.message
       });
-      await writeBundle(bundleFile, bundle);
+      await writeResultBundle(bundleFile, bundle);
       return { bundle, bundlePath: bundleFile, exitCode: EXIT_CODES.genericFailure };
     }
     throw new CliError(`cannot read job JSON: ${error.message}`, EXIT_CODES.invalidUsage);
@@ -86,7 +86,7 @@ export async function runLocalJob({ cwd, jobPath, workspace = ".", bundlePath = 
     artifacts,
     errorMessage
   });
-  await writeBundle(bundleFile, bundle);
+  await writeResultBundle(bundleFile, bundle);
   return {
     bundle,
     bundlePath: bundleFile,
@@ -377,12 +377,6 @@ function emptyExecutorSummary(message) {
     result: null,
     result_warnings: [{ code: "local_run_error", message }]
   };
-}
-
-async function writeBundle(bundlePath, bundle) {
-  assertResultBundle(bundle);
-  await mkdir(path.dirname(bundlePath), { recursive: true });
-  await writeFile(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
 }
 
 function messageForReason(reason) {

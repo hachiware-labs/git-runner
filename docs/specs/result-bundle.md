@@ -13,7 +13,7 @@ The machine-readable JSON Schema is maintained at [../../src/schemas/git-runner.
 Result Bundle producers:
 
 - `git-runner local run <job.json> --bundle <path>`
-- future `git-runner get <job-id> --bundle`
+- `git-runner get <job-id> --bundle [path]`
 
 Required conditions:
 
@@ -109,6 +109,12 @@ Non-terminal jobs must not be emitted as Result Bundles.
 - If required result JSON is missing, status is `FAILED` with reason `result_missing`.
 - If result JSON or schema validation fails, status is `FAILED` with reason `result_invalid`.
 - A failed command may still include a parsed `outputs.result.value` when the command produced useful evidence.
+
+### 5.1 Size Rules
+
+Bundles are intended to be small enough for CLI output and Web UI inspection. Producers must not embed stdout, stderr, or artifact file contents.
+
+`outputs.result.value` may be embedded only while it stays within the producer's inline result budget. The default git-runner budget is 256 KiB of UTF-8 JSON. If the result is larger, producers set `outputs.result.value` to `null` and add a `result_omitted_from_bundle` warning with the original byte count and limit.
 
 ## 6. Artifact Rules
 

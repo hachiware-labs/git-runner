@@ -211,6 +211,153 @@ test("get copies collected artifacts to output directory", async () => {
   assert.equal(await readFile(path.join(outputDir, "report"), "utf8"), "# Report\n");
 });
 
+test("get writes a Result Bundle to the job store when bundle path is omitted", async () => {
+  const cwd = await tempDir();
+  const jobDir = path.join(cwd, ".git-runner", "jobs", "job_bundle");
+  await mkdir(path.join(jobDir, "artifacts"), { recursive: true });
+  await writeFile(path.join(jobDir, "job-spec.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_bundle",
+    source: {
+      type: "git",
+      repo: "repo",
+      commit: "abc123"
+    },
+    setup: [],
+    entry: {
+      type: "command",
+      command: "npm test"
+    },
+    params: {
+      sample: true
+    },
+    outputs: {
+      result: {
+        path: ".git-runner/result.json",
+        schema: {
+          type: "none"
+        }
+      },
+      artifacts: []
+    },
+    worker: {
+      tags: ["default"]
+    }
+  })}\n`);
+  await writeFile(path.join(jobDir, "result-summary.json"), `${JSON.stringify({
+    job_id: "job_bundle",
+    status: "COMPLETED",
+    reason: null,
+    worker_id: "worker-001",
+    source: {
+      type: "git",
+      repo: "repo",
+      commit: "abc123"
+    },
+    exit_code: 0,
+    signal: null,
+    duration_ms: 12,
+    stdout_bytes: 10,
+    stderr_bytes: 0,
+    stdout_truncated: false,
+    stderr_truncated: false,
+    result: {
+      ok: true
+    },
+    result_warnings: [],
+    artifacts: [
+      {
+        name: "report",
+        path: "results/report.md",
+        stored_path: path.join("artifacts", "report.md"),
+        size_bytes: 8,
+        sha256: "abc123",
+        missing: false
+      }
+    ],
+    started_at: "2026-06-18T00:00:00.000Z",
+    finished_at: "2026-06-18T00:00:01.000Z"
+  })}\n`);
+
+  const result = await runCli(["get", "job_bundle", "--bundle"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  assert.match(result.stdout, /result_bundle:/);
+  assert.match(result.stdout, /status: COMPLETED/);
+  const bundle = JSON.parse(await readFile(path.join(jobDir, "result-bundle.json"), "utf8"));
+  assert.equal(bundle.schema_version, "git-runner.result-bundle.v1");
+  assert.equal(bundle.job_id, "job_bundle");
+  assert.deepEqual(bundle.outputs.result.value, { ok: true });
+  assert.equal(bundle.outputs.artifacts[0].file, path.join("artifacts", "report.md"));
+});
+
+test("get Result Bundle omits oversized result values for web-sized bundles", async () => {
+  const cwd = await tempDir();
+  const jobDir = path.join(cwd, ".git-runner", "jobs", "job_large_bundle");
+  await mkdir(jobDir, { recursive: true });
+  await writeFile(path.join(jobDir, "job-spec.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_large_bundle",
+    source: {
+      type: "git",
+      repo: "repo",
+      commit: "abc123"
+    },
+    setup: [],
+    entry: {
+      type: "command",
+      command: "npm test"
+    },
+    params: {},
+    outputs: {
+      result: {
+        path: ".git-runner/result.json",
+        schema: {
+          type: "none"
+        }
+      },
+      artifacts: []
+    },
+    worker: {
+      tags: ["default"]
+    }
+  })}\n`);
+  await writeFile(path.join(jobDir, "result-summary.json"), `${JSON.stringify({
+    job_id: "job_large_bundle",
+    status: "COMPLETED",
+    reason: null,
+    worker_id: "worker-001",
+    source: {
+      type: "git",
+      repo: "repo",
+      commit: "abc123"
+    },
+    exit_code: 0,
+    signal: null,
+    duration_ms: 12,
+    stdout_bytes: 0,
+    stderr_bytes: 0,
+    stdout_truncated: false,
+    stderr_truncated: false,
+    result: {
+      payload: "x".repeat(300000)
+    },
+    result_warnings: [],
+    artifacts: [],
+    started_at: "2026-06-18T00:00:00.000Z",
+    finished_at: "2026-06-18T00:00:01.000Z"
+  })}\n`);
+
+  const result = await runCli(["get", "job_large_bundle", "--bundle", "large-bundle.json", "--json"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  const bundle = JSON.parse(result.stdout);
+  assert.equal(bundle.outputs.result.value, null);
+  assert.equal(bundle.outputs.result.warnings[0].code, "result_omitted_from_bundle");
+  const saved = JSON.parse(await readFile(path.join(cwd, "large-bundle.json"), "utf8"));
+  assert.equal(saved.outputs.result.value, null);
+});
+
 test("missing job returns job store failure exit code", async () => {
   const cwd = await tempDir();
   const result = await runCli(["status", "job_missing"], cwd);

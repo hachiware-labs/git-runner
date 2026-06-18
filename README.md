@@ -37,6 +37,7 @@ Implemented MVP capabilities:
 - local `status`, `logs`, and `get`
 - read-only `recover-lock` stale lock inspection
 - `git-runner local run` for existing-workspace Job Spec validation and Result Bundle output
+- `git-runner get --bundle` for exporting terminal worker results as Result Bundles
 
 Out of scope for the MVP:
 
@@ -108,6 +109,14 @@ node bin/git-runner.js status <job-id>
 node bin/git-runner.js logs <job-id>
 node bin/git-runner.js get <job-id> --json
 ```
+
+Export a terminal worker result as a portable Result Bundle:
+
+```bash
+node bin/git-runner.js get <job-id> --bundle
+```
+
+If no bundle path is provided, the file is written to `.git-runner/jobs/<job-id>/result-bundle.json`. Bundles keep logs and artifacts as metadata instead of embedding large file contents.
 
 For a complete walkthrough, see [docs/tutorial.md](docs/tutorial.md).
 

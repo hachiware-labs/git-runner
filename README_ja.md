@@ -37,6 +37,7 @@ branch 名は動きます。`git-runner` は実行対象を commit SHA に固定
 - local `status`、`logs`、`get`
 - read-only `recover-lock` stale lock inspection
 - 既存 workspace で Job Spec を検証し Result Bundle を出力する `git-runner local run`
+- terminal worker result を Result Bundle として export する `git-runner get --bundle`
 
 MVP の対象外:
 
@@ -108,6 +109,14 @@ node bin/git-runner.js status <job-id>
 node bin/git-runner.js logs <job-id>
 node bin/git-runner.js get <job-id> --json
 ```
+
+terminal worker result を portable な Result Bundle として export します。
+
+```bash
+node bin/git-runner.js get <job-id> --bundle
+```
+
+bundle path を指定しない場合、`.git-runner/jobs/<job-id>/result-bundle.json` に書きます。bundle は大きな file 本文を埋め込まず、logs と artifacts は metadata として扱います。
 
 通しの手順は [docs/tutorial_ja.md](docs/tutorial_ja.md) を参照してください。
 
