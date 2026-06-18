@@ -11,7 +11,7 @@
 - [adr/](adr/): Architecture Decision Record。重要な設計判断と理由を記録する。
 - [specs/](specs/): 実装仕様。CLI、Job Spec、worker、status、result、security などの契約を定義する。
 - [specs/recovery.md](specs/recovery.md): stale execution lock の診断と手動復旧手順を定義する。
-- [specs/local-run.md](specs/local-run.md): `git-runner local run` と Research Booster fixture 互換性を定義する。
+- [specs/local-run.md](specs/local-run.md): `git-runner local run` と Research Booster sample 互換性を定義する。
 - [specs/result-bundle.md](specs/result-bundle.md): terminal job の可搬 Result Bundle を定義する。
 
 ## 実装時の優先順位

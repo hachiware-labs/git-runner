@@ -1,9 +1,9 @@
 {
   "schema_version": "git-runner.local-runner-acceptance.v1",
-  "description": "Acceptance fixture for a JS/npm git-runner local runner that produces a Research Booster importable result bundle.",
+  "description": "Acceptance sample for a JS/npm git-runner local runner that produces a Research Booster importable result bundle.",
   "derived_from": {
     "implementation_brief": "research-booster/docs/git-runner/implementation-briefs/0001-local-runner.md",
-    "acceptance_fixture": "research-booster/examples/git-runner-research-booster-e2e/local-runner-acceptance.json",
+    "acceptance_sample": "research-booster/examples/git-runner-research-booster-e2e/local-runner-acceptance.json",
     "reference_mock": "research-booster/examples/git-runner-research-booster-e2e/local_runner_mock.py",
     "path_rewrites": [
       {
@@ -17,7 +17,7 @@
   "schema_setup": {
     "command": "research-booster result schema --write schemas/research-booster.v1.schema.json",
     "creates": "schemas/research-booster.v1.schema.json",
-    "local_fixture": "examples/research-booster-local-runner/schemas/research-booster.v1.schema.json"
+    "local_schema": "examples/research-booster-local-runner/schemas/research-booster.v1.schema.json"
   },
   "command_under_test": {
     "command": "git-runner local run examples/research-booster-local-runner/job.json --bundle .git-runner/result-bundle.json",

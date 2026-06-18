@@ -75,7 +75,7 @@ MVP-supported fields:
 
 ## 5. Compatibility Normalization
 
-Research Booster's local runner fixture uses a narrow contract that differs slightly from the current distributed-worker Job Spec. `local run` must normalize these inputs before execution:
+Research Booster's local runner sample uses a narrow contract that differs slightly from the current distributed-worker Job Spec. `local run` must normalize these inputs before execution:
 
 ### 5.1 Setup Entries
 
@@ -173,10 +173,10 @@ Required Research Booster-compatible fields:
 - `job.params` is preserved;
 - `source.repo`, `source.branch`, and `source.commit` are preserved.
 
-## 9. Acceptance Fixture
+## 9. Acceptance Sample
 
-The initial acceptance fixture is [examples/research-booster-local-runner/local-runner-acceptance.json](../../examples/research-booster-local-runner/local-runner-acceptance.json).
+The initial acceptance sample is [examples/research-booster-local-runner/local-runner-acceptance.json](../../examples/research-booster-local-runner/local-runner-acceptance.json).
 
-It is a path-rebased snapshot derived from Research Booster's `git-runner-research-booster-e2e` fixture and is accepted as git-runner's local runner contract. The fixture records its source brief, source acceptance fixture, reference mock, and path rewrite metadata so drift can be reviewed explicitly.
+It is a path-rebased snapshot derived from Research Booster's `git-runner-research-booster-e2e` sample and is accepted as git-runner's local runner contract. The sample records its source brief, source acceptance sample, reference mock, and path rewrite metadata so drift can be reviewed explicitly.
 
-The fixture includes a representative draft 2020-12 `research-booster.v1` schema at [examples/research-booster-local-runner/schemas/research-booster.v1.schema.json](../../examples/research-booster-local-runner/schemas/research-booster.v1.schema.json), so git-runner can run local-run acceptance without depending on the external Research Booster repository.
+The sample includes a representative draft 2020-12 `research-booster.v1` schema at [examples/research-booster-local-runner/schemas/research-booster.v1.schema.json](../../examples/research-booster-local-runner/schemas/research-booster.v1.schema.json), so git-runner can run local-run acceptance without depending on the external Research Booster repository.

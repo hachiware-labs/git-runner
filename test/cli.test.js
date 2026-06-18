@@ -728,9 +728,9 @@ test("local run distinguishes setup failure from entry command failure", async (
   assert.equal(bundle.execution.failed_stage, "setup");
 });
 
-test("local run satisfies the Research Booster acceptance fixture", async (t) => {
+test("local run satisfies the Research Booster acceptance sample", async (t) => {
   if (!(await commandAvailable("python"))) {
-    t.skip("python command is not available for the Research Booster fixture");
+    t.skip("python command is not available for the Research Booster sample");
     return;
   }
 
@@ -743,7 +743,7 @@ test("local run satisfies the Research Booster acceptance fixture", async (t) =>
   const acceptancePath = path.join(workspace, "examples", "research-booster-local-runner", "local-runner-acceptance.json");
   const acceptance = JSON.parse(await readFile(acceptancePath, "utf8"));
   assert.equal(
-    acceptance.derived_from.acceptance_fixture,
+    acceptance.derived_from.acceptance_sample,
     "research-booster/examples/git-runner-research-booster-e2e/local-runner-acceptance.json"
   );
   assert.equal(
@@ -751,12 +751,12 @@ test("local run satisfies the Research Booster acceptance fixture", async (t) =>
     "examples/research-booster-local-runner/"
   );
   assert.equal(
-    acceptance.schema_setup.local_fixture,
+    acceptance.schema_setup.local_schema,
     "examples/research-booster-local-runner/schemas/research-booster.v1.schema.json"
   );
   await mkdir(path.join(workspace, "schemas"), { recursive: true });
   await copyFile(
-    path.join(workspace, acceptance.schema_setup.local_fixture),
+    path.join(workspace, acceptance.schema_setup.local_schema),
     path.join(workspace, acceptance.schema_setup.creates)
   );
 

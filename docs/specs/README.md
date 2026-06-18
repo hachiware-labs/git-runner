@@ -9,7 +9,7 @@
 - [config.md](config.md): project config と worker config
 - [git.md](git.md): Git repository inspection、ref resolution、checkout
 - [job-spec.md](job-spec.md): Job Spec JSON contract
-- [local-run.md](local-run.md): `git-runner local run` command contract and Research Booster fixture compatibility
+- [local-run.md](local-run.md): `git-runner local run` command contract and Research Booster sample compatibility
 - [result-bundle.md](result-bundle.md): terminal job bundle shape for Research Booster/Codex import
 - [worker.md](worker.md): worker config、workspace、supervisor/executor
 - [status-events.md](status-events.md): job status、reason、NATS subjects、events

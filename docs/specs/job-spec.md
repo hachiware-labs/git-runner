@@ -222,7 +222,7 @@ The authoritative validation and policy mapping is defined in [error-catalog.md]
 
 ## 5. Local Run Compatibility
 
-`git-runner local run` consumes Job Spec schema version `1`, but accepts a small compatibility surface for Research Booster local-runner fixtures:
+`git-runner local run` consumes Job Spec schema version `1`, but accepts a small compatibility surface for Research Booster local-runner samples:
 
 - `setup` may contain strings, which are normalized to `{ "type": "command", "command": <string> }`.
 - `worker.routing_tag` may be used instead of `worker.tags[0]`.
