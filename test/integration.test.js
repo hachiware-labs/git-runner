@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -77,6 +77,13 @@ async function createRunnableRepo({ commandScript = null, outputs = null, extraF
 }
 
 function natsServerPath() {
+  if (process.env.NATS_SERVER_PATH && existsSync(process.env.NATS_SERVER_PATH)) {
+    return process.env.NATS_SERVER_PATH;
+  }
+  const pathCandidate = findExecutable("nats-server");
+  if (pathCandidate) {
+    return pathCandidate;
+  }
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   const candidate = path.join(
@@ -89,6 +96,19 @@ function natsServerPath() {
     "nats-server.exe"
   );
   return existsSync(candidate) ? candidate : null;
+}
+
+function findExecutable(command) {
+  const lookup = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(lookup, [command], {
+    encoding: "utf8",
+    windowsHide: true
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const first = result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+  return first && existsSync(first) ? first : null;
 }
 
 async function withNats(t, fn, { jetstream = false } = {}) {
