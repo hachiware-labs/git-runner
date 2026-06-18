@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CliError, EXIT_CODES } from "./errors.js";
 import { resolveInside } from "./path-utils.js";
-import { writeResultBundle } from "./result-bundle.js";
+import { projectResultValue, writeResultBundle } from "./result-bundle.js";
 
 const DEFAULT_BUNDLE_PATH = ".git-runner/result-bundle.json";
 const DEFAULT_WORKER_ID = "local-001";
@@ -276,6 +276,10 @@ async function collectArtifacts({ jobSpec, workspacePath }) {
 }
 
 function buildResultBundle({ jobSpec, workerId, status, reason, submittedAt, startedAt, finishedAt, executorSummary, artifacts, errorMessage }) {
+  const resultProjection = projectResultValue({
+    value: executorSummary.result,
+    warnings: executorSummary.result_warnings ?? []
+  });
   return {
     schema_version: "git-runner.result-bundle.v1",
     job_id: jobSpec.job_id,
@@ -318,8 +322,8 @@ function buildResultBundle({ jobSpec, workerId, status, reason, submittedAt, sta
         path: jobSpec.outputs.result.path,
         schema: jobSpec.outputs.result.schema,
         file: executorSummary.result === null ? null : jobSpec.outputs.result.path,
-        value: executorSummary.result,
-        warnings: executorSummary.result_warnings ?? []
+        value: resultProjection.value,
+        warnings: resultProjection.warnings
       },
       artifacts
     },
@@ -329,7 +333,7 @@ function buildResultBundle({ jobSpec, workerId, status, reason, submittedAt, sta
       message: errorMessage ?? messageForReason(reason),
       retryable: reason === "timeout" || reason === "command_failed",
       emitted_by: "git-runner local run",
-      details: executorSummary.result_warnings ?? []
+      details: resultProjection.warnings
     } : null
   };
 }

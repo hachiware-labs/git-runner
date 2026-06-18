@@ -390,4 +390,4 @@ JSON output shape is defined in [result-artifacts.md](result-artifacts.md).
 
 With `--bundle`, `get` writes a `git-runner.result-bundle.v1` file from the local job store terminal result. If `path` is omitted, the bundle is written to `.git-runner/jobs/<job-id>/result-bundle.json`.
 
-Bundle output is metadata-oriented for CLI and Web UI use. stdout, stderr, and artifact bodies are not embedded. Large result JSON values are omitted from `outputs.result.value` and reported in `outputs.result.warnings`.
+Bundle output is metadata-oriented for CLI and Web UI use. stdout, stderr, and artifact bodies are not embedded. Large result JSON values over the default 256 KiB inline budget are omitted from `outputs.result.value`, reported in `outputs.result.warnings`, and surfaced in non-JSON CLI output as `result_warning: result_omitted_from_bundle`.

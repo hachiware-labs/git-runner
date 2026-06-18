@@ -166,7 +166,8 @@ This priority keeps contract problems visible even when the process exits unsucc
 
 Required Research Booster-compatible fields:
 
-- `outputs.result.value` contains parsed result JSON when a result exists;
+- `outputs.result.value` contains parsed result JSON when a result exists and fits the Result Bundle inline budget;
+- `outputs.result.file` points to the result JSON when `outputs.result.value` is omitted for size;
 - `outputs.result.schema` preserves the job output schema config;
 - `worker.worker_id` is set from `--worker-id`;
 - `worker.routing_tag` is set by compatibility normalization;

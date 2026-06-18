@@ -480,7 +480,7 @@ async function commandLocal(args, context) {
     exitCode: result.exitCode,
     output: args.json
       ? result.bundle
-      : `result_bundle: ${result.bundlePath}\nstatus: ${result.bundle.status}\nreason: ${result.bundle.reason ?? ""}\n`
+      : formatBundleOutput({ bundle: result.bundle, bundlePath: result.bundlePath })
   });
 }
 
@@ -590,7 +590,7 @@ async function commandGet(args, context) {
     await writeResultBundle(bundlePath, bundle);
     return args.json
       ? bundle
-      : `result_bundle: ${bundlePath}\nstatus: ${bundle.status}\nreason: ${bundle.reason ?? ""}\n`;
+      : formatBundleOutput({ bundle, bundlePath });
   }
 
   if (args.outputDir) {
@@ -906,6 +906,31 @@ function formatBundleValidation(report) {
     "errors:",
     ...report.errors.map((error) => `- ${error.path} ${error.message}`)
   ].join("\n") + "\n";
+}
+
+function formatBundleOutput({ bundle, bundlePath }) {
+  const lines = [
+    `result_bundle: ${bundlePath}`,
+    `status: ${bundle.status}`,
+    `reason: ${bundle.reason ?? ""}`
+  ];
+  for (const warning of bundle.outputs?.result?.warnings ?? []) {
+    lines.push(formatResultWarning(warning));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function formatResultWarning(warning) {
+  if (warning.code === "result_omitted_from_bundle") {
+    return [
+      "result_warning: result_omitted_from_bundle",
+      `message: ${warning.message}`,
+      `bytes: ${warning.bytes}`,
+      `max_bytes: ${warning.max_bytes}`,
+      "next_step: keep the result JSON as a file or write a smaller result JSON for Web UI import"
+    ].join(" ");
+  }
+  return `result_warning: ${warning.code ?? "unknown"} message: ${warning.message ?? ""}`;
 }
 
 function summarizeAjvError(error) {

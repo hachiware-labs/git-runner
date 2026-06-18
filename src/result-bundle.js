@@ -82,7 +82,7 @@ export function buildResultBundleFromSummary({ summary, jobSpec, inlineResultMax
   };
 }
 
-function projectResultValue({ value, warnings, inlineResultMaxBytes }) {
+export function projectResultValue({ value, warnings, inlineResultMaxBytes = DEFAULT_INLINE_RESULT_MAX_BYTES }) {
   if (value === null) {
     return { value: null, warnings };
   }

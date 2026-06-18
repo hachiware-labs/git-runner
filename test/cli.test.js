@@ -408,14 +408,15 @@ test("get Result Bundle omits oversized result values for web-sized bundles", as
     finished_at: "2026-06-18T00:00:01.000Z"
   })}\n`);
 
-  const result = await runCli(["get", "job_large_bundle", "--bundle", "large-bundle.json", "--json"], cwd);
+  const result = await runCli(["get", "job_large_bundle", "--bundle", "large-bundle.json"], cwd);
 
   assert.equal(result.exitCode, EXIT_CODES.success);
-  const bundle = JSON.parse(result.stdout);
-  assert.equal(bundle.outputs.result.value, null);
-  assert.equal(bundle.outputs.result.warnings[0].code, "result_omitted_from_bundle");
+  assert.match(result.stdout, /result_warning: result_omitted_from_bundle/);
+  assert.match(result.stdout, /max_bytes: 262144/);
   const saved = JSON.parse(await readFile(path.join(cwd, "large-bundle.json"), "utf8"));
   assert.equal(saved.outputs.result.value, null);
+  assert.equal(saved.outputs.result.warnings[0].code, "result_omitted_from_bundle");
+  assert.equal(saved.outputs.result.warnings[0].max_bytes, 262144);
 });
 
 test("validate-bundle reports valid Result Bundle files", async () => {
@@ -616,6 +617,73 @@ test("local run writes a completed result bundle", async () => {
   assert.equal(bundle.worker.routing_tag, "research");
   assert.deepEqual(bundle.outputs.result.value, { ok: true });
   assert.equal(bundle.outputs.artifacts[0].missing, false);
+});
+
+test("local run omits oversized result values from web-sized bundles", async () => {
+  const cwd = await tempDir();
+  const workspace = await tempDir();
+  await writeFile(path.join(workspace, "write-large-result.js"), [
+    "import { writeFile, mkdir } from 'node:fs/promises';",
+    "await mkdir('out', { recursive: true });",
+    "await writeFile('out/result.json', JSON.stringify({ payload: 'x'.repeat(300000) }));"
+  ].join("\n"));
+  await writeFile(path.join(workspace, "job.json"), `${JSON.stringify({
+    schema_version: 1,
+    job_id: "job_local_large_result",
+    source: {
+      type: "git",
+      repo: workspace,
+      commit: "abc123"
+    },
+    working_dir: ".",
+    setup: [],
+    entry: {
+      type: "command",
+      command: "node write-large-result.js"
+    },
+    params: {},
+    param_passing: {
+      mode: "json_file",
+      path: ".git-runner/params.json"
+    },
+    outputs: {
+      result: {
+        path: "out/result.json",
+        schema: {
+          type: "none"
+        }
+      },
+      artifacts: []
+    },
+    execution: {
+      timeout_sec: 5,
+      max_stdout_bytes: 1000,
+      max_stderr_bytes: 1000
+    },
+    worker: {
+      tags: ["default"]
+    }
+  }, null, 2)}\n`);
+
+  const result = await runCli([
+    "local",
+    "run",
+    "job.json",
+    "--workspace",
+    workspace,
+    "--bundle",
+    ".git-runner/result-bundle.json"
+  ], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  assert.match(result.stdout, /status: COMPLETED/);
+  assert.match(result.stdout, /result_warning: result_omitted_from_bundle/);
+  assert.match(result.stdout, /max_bytes: 262144/);
+  const bundle = JSON.parse(await readFile(path.join(workspace, ".git-runner", "result-bundle.json"), "utf8"));
+  assert.equal(bundle.outputs.result.file, "out/result.json");
+  assert.equal(bundle.outputs.result.value, null);
+  assert.equal(bundle.outputs.result.warnings[0].code, "result_omitted_from_bundle");
+  assert.equal(bundle.outputs.result.warnings[0].max_bytes, 262144);
 });
 
 test("local run writes a failed bundle for a missing required artifact", async () => {

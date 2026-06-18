@@ -114,7 +114,9 @@ Non-terminal jobs must not be emitted as Result Bundles.
 
 Bundles are intended to be small enough for CLI output and Web UI inspection. Producers must not embed stdout, stderr, or artifact file contents.
 
-`outputs.result.value` may be embedded only while it stays within the producer's inline result budget. The default git-runner budget is 256 KiB of UTF-8 JSON. If the result is larger, producers set `outputs.result.value` to `null` and add a `result_omitted_from_bundle` warning with the original byte count and limit.
+`outputs.result.value` may be embedded only while it stays within the producer's inline result budget. The default git-runner budget is 256 KiB of UTF-8 JSON. If the result is larger, producers set `outputs.result.value` to `null`, keep `outputs.result.file` pointing at the result JSON when available, and add a `result_omitted_from_bundle` warning with the original byte count and limit.
+
+This is not a job failure. It means the Result Bundle stayed small enough for CLI and Web UI inspection, while the full result remains available as a file in the workspace or job store.
 
 ## 6. Artifact Rules
 

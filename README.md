@@ -117,7 +117,7 @@ Export a terminal worker result as a portable Result Bundle:
 node bin/git-runner.js get <job-id> --bundle
 ```
 
-If no bundle path is provided, the file is written to `.git-runner/jobs/<job-id>/result-bundle.json`. Bundles keep logs and artifacts as metadata instead of embedding large file contents.
+If no bundle path is provided, the file is written to `.git-runner/jobs/<job-id>/result-bundle.json`. Bundles keep logs and artifacts as metadata instead of embedding large file contents. Result JSON is embedded only when it fits the default 256 KiB inline budget; larger results stay available as files and are reported with `result_warning: result_omitted_from_bundle`.
 
 Validate a Result Bundle before importing it elsewhere:
 
