@@ -431,6 +431,57 @@ test("validate-bundle reports valid Result Bundle files", async () => {
   assert.match(result.stdout, /job_id: job_validate_bundle/);
 });
 
+test("validate-bundle reports failed Result Bundle files as schema-valid", async () => {
+  const cwd = await tempDir();
+  for (const reason of ["result_missing", "result_invalid"]) {
+    const bundle = validResultBundle();
+    bundle.job_id = `job_${reason}`;
+    bundle.status = "FAILED";
+    bundle.reason = reason;
+    bundle.error = {
+      status: "FAILED",
+      reason,
+      message: reason,
+      retryable: false,
+      emitted_by: "git-runner local run",
+      details: [
+        {
+          code: reason,
+          message: reason
+        }
+      ]
+    };
+    bundle.outputs.result.schema = {
+      type: "json_schema",
+      file: "schemas/result.schema.json"
+    };
+    bundle.outputs.result.warnings = [
+      {
+        code: reason,
+        message: reason
+      }
+    ];
+    if (reason === "result_missing") {
+      bundle.outputs.result.file = null;
+      bundle.outputs.result.value = null;
+    } else {
+      bundle.outputs.result.file = ".git-runner/result.json";
+      bundle.outputs.result.value = { ok: "no" };
+    }
+    const bundleFile = `${reason}.json`;
+    await writeFile(path.join(cwd, bundleFile), `${JSON.stringify(bundle, null, 2)}\n`);
+
+    const result = await runCli(["validate-bundle", bundleFile, "--json"], cwd);
+
+    assert.equal(result.exitCode, EXIT_CODES.success, reason);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.valid, true, reason);
+    assert.equal(report.status, "FAILED", reason);
+    assert.equal(report.reason, reason, reason);
+    assert.equal(report.result_warnings[0].code, reason, reason);
+  }
+});
+
 test("validate-bundle returns non-zero for malformed Result Bundle files", async () => {
   const cwd = await tempDir();
   const bundle = validResultBundle();
