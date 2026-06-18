@@ -16,6 +16,7 @@ MVP command:
 - `status`
 - `recover-lock`
 - `local run`
+- `validate-bundle`
 - `logs`
 - `get`
 
@@ -344,7 +345,23 @@ reason:
 
 JSON output returns the full Result Bundle. Detailed local-run contract is defined in [local-run.md](local-run.md), and bundle shape is defined in [result-bundle.md](result-bundle.md).
 
-## 9. `git-runner logs`
+## 9. `git-runner validate-bundle`
+
+```bash
+git-runner validate-bundle <path> [--json]
+```
+
+Validates a Result Bundle file against `git-runner.result-bundle.v1`.
+
+Behavior:
+
+- exits `0` when the bundle is valid;
+- exits `1` when the bundle is readable JSON but fails schema validation;
+- exits `2` when the path is missing, unreadable, or invalid JSON.
+
+Human output summarizes validity, job id, status, and warning count. JSON output returns `{ "valid": true }` with summary fields or `{ "valid": false, "errors": [...] }`.
+
+## 10. `git-runner logs`
 
 ```bash
 git-runner logs <job-id> [--stream] [--stderr] [--stdout]
@@ -361,7 +378,7 @@ MVP reads logs from the configured local job store:
 
 MVP assumes `logs` can access the same `job_store_root` used by worker. Multi-machine log retrieval without shared storage is out of scope for MVP.
 
-## 10. `git-runner get`
+## 11. `git-runner get`
 
 ```bash
 git-runner get <job-id> [--json] [--output <dir>] [--bundle [path]]

@@ -15,6 +15,7 @@ import {
 import { runLocalJob } from "./local-runner.js";
 import { publishJob } from "./nats-publisher.js";
 import { buildResultBundleFromSummary, DEFAULT_RESULT_BUNDLE_FILE, writeResultBundle } from "./result-bundle.js";
+import { validateResultBundle } from "./result-bundle-validator.js";
 import { runWorker } from "./worker.js";
 
 const HELP = `git-runner <command> [options]
@@ -25,6 +26,7 @@ Commands:
   status <job-id>      Read .git-runner/jobs/<job-id>/status.json
   recover-lock <job-id> Inspect stale execution.lock recovery preconditions
   local run <job.json> Execute a Job Spec in an existing local workspace
+  validate-bundle <path> Validate a Result Bundle JSON file
   logs <job-id>        Read stdout/stderr logs from local job store
   get <job-id>         Read result-summary.json from local job store
 
@@ -72,6 +74,8 @@ export async function run(argv, context) {
       return commandRecoverLock(args, context);
     case "local":
       return commandLocal(args, context);
+    case "validate-bundle":
+      return commandValidateBundle(args, context);
     case "logs":
       return commandLogs(args, context);
     case "get":
@@ -514,6 +518,45 @@ async function commandLogs(args, context) {
   return chunks.join("");
 }
 
+async function commandValidateBundle(args, context) {
+  if (args.help) {
+    return "git-runner validate-bundle <path> [--json]\n";
+  }
+  const bundlePath = args.positional[0];
+  if (!bundlePath) {
+    throw new CliError("missing bundle path", EXIT_CODES.invalidUsage);
+  }
+  const absolutePath = resolvePath(context.cwd, bundlePath);
+  let bundle;
+  try {
+    bundle = JSON.parse(await readFile(absolutePath, "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new CliError(`invalid bundle JSON ${absolutePath}: ${error.message}`, EXIT_CODES.invalidUsage);
+    }
+    throw new CliError(`cannot read bundle ${absolutePath}: ${error.message}`, EXIT_CODES.invalidUsage);
+  }
+  const validation = validateResultBundle(bundle);
+  const report = {
+    valid: validation.valid,
+    path: absolutePath,
+    ...(validation.valid ? {
+      schema_version: bundle.schema_version,
+      job_id: bundle.job_id,
+      status: bundle.status,
+      reason: bundle.reason ?? null,
+      result_warnings: bundle.outputs?.result?.warnings ?? []
+    } : {
+      errors: validation.errors.map(summarizeAjvError)
+    })
+  };
+
+  return commandResult({
+    exitCode: validation.valid ? EXIT_CODES.success : EXIT_CODES.genericFailure,
+    output: args.json ? report : formatBundleValidation(report)
+  });
+}
+
 async function commandGet(args, context) {
   if (args.help) {
     return "git-runner get <job-id> [--json] [--bundle [path]] [--job-store-root .git-runner/jobs]\n";
@@ -843,6 +886,34 @@ function writeOutput(stream, value) {
     return;
   }
   stream.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function formatBundleValidation(report) {
+  if (report.valid) {
+    return [
+      "valid: true",
+      `path: ${report.path}`,
+      `schema_version: ${report.schema_version}`,
+      `job_id: ${report.job_id ?? ""}`,
+      `status: ${report.status ?? ""}`,
+      `reason: ${report.reason ?? ""}`,
+      `result_warnings: ${report.result_warnings.length}`
+    ].join("\n") + "\n";
+  }
+  return [
+    "valid: false",
+    `path: ${report.path}`,
+    "errors:",
+    ...report.errors.map((error) => `- ${error.path} ${error.message}`)
+  ].join("\n") + "\n";
+}
+
+function summarizeAjvError(error) {
+  return {
+    path: error.instancePath || "/",
+    message: error.message ?? "",
+    keyword: error.keyword
+  };
 }
 
 function commandResult({ exitCode, output }) {

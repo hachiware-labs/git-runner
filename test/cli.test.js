@@ -71,6 +71,66 @@ function valueAtPath(value, fieldPath) {
   return current;
 }
 
+function validResultBundle() {
+  return {
+    schema_version: "git-runner.result-bundle.v1",
+    job_id: "job_validate_bundle",
+    status: "COMPLETED",
+    reason: null,
+    job: {
+      job_id: "job_validate_bundle",
+      params: {}
+    },
+    source: {
+      type: "git",
+      repo: "repo",
+      commit: "abc123"
+    },
+    worker: {
+      worker_id: "worker-001",
+      routing_tag: "default"
+    },
+    timing: {
+      submitted_at: "2026-06-18T00:00:00.000Z",
+      started_at: "2026-06-18T00:00:00.000Z",
+      finished_at: "2026-06-18T00:00:01.000Z",
+      duration_ms: 1000
+    },
+    execution: {
+      exit_code: 0,
+      signal: null,
+      timed_out: false,
+      failed_stage: null,
+      commands: ["npm test"]
+    },
+    outputs: {
+      stdout: {
+        file: "stdout.log",
+        bytes: 0,
+        truncated: false
+      },
+      stderr: {
+        file: "stderr.log",
+        bytes: 0,
+        truncated: false
+      },
+      result: {
+        path: ".git-runner/result.json",
+        schema: {
+          type: "none"
+        },
+        file: null,
+        value: {
+          ok: true
+        },
+        warnings: []
+      },
+      artifacts: []
+    },
+    error: null
+  };
+}
+
 async function head(repo) {
   return git(repo, ["rev-parse", "HEAD"]);
 }
@@ -356,6 +416,33 @@ test("get Result Bundle omits oversized result values for web-sized bundles", as
   assert.equal(bundle.outputs.result.warnings[0].code, "result_omitted_from_bundle");
   const saved = JSON.parse(await readFile(path.join(cwd, "large-bundle.json"), "utf8"));
   assert.equal(saved.outputs.result.value, null);
+});
+
+test("validate-bundle reports valid Result Bundle files", async () => {
+  const cwd = await tempDir();
+  const bundlePath = path.join(cwd, "result-bundle.json");
+  await writeFile(bundlePath, `${JSON.stringify(validResultBundle(), null, 2)}\n`);
+
+  const result = await runCli(["validate-bundle", "result-bundle.json"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.success);
+  assert.match(result.stdout, /valid: true/);
+  assert.match(result.stdout, /job_id: job_validate_bundle/);
+});
+
+test("validate-bundle returns non-zero for malformed Result Bundle files", async () => {
+  const cwd = await tempDir();
+  const bundle = validResultBundle();
+  bundle.status = "RUNNING";
+  delete bundle.outputs.result.value;
+  await writeFile(path.join(cwd, "bad-bundle.json"), `${JSON.stringify(bundle, null, 2)}\n`);
+
+  const result = await runCli(["validate-bundle", "bad-bundle.json", "--json"], cwd);
+
+  assert.equal(result.exitCode, EXIT_CODES.genericFailure);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.valid, false);
+  assert.ok(report.errors.length > 0);
 });
 
 test("missing job returns job store failure exit code", async () => {
