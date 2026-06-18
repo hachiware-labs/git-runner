@@ -745,6 +745,98 @@ test("local run writes a failed bundle for a missing required artifact", async (
   assert.equal(savedBundle.outputs.artifacts[0].missing, true);
 });
 
+test("local run writes failed bundles for required result validation failures", async () => {
+  const cases = [
+    {
+      jobId: "job_local_result_missing",
+      script: [
+        "import { mkdir } from 'node:fs/promises';",
+        "await mkdir('out', { recursive: true });"
+      ],
+      reason: "result_missing",
+      expectedFile: null,
+      expectedValue: null
+    },
+    {
+      jobId: "job_local_result_invalid",
+      script: [
+        "import { writeFile, mkdir } from 'node:fs/promises';",
+        "await mkdir('out', { recursive: true });",
+        "await writeFile('out/result.json', JSON.stringify({ ok: 'no' }));"
+      ],
+      reason: "result_invalid",
+      expectedFile: "out/result.json",
+      expectedValue: { ok: "no" }
+    }
+  ];
+
+  for (const testCase of cases) {
+    const workspace = await tempDir();
+    await mkdir(path.join(workspace, "schemas"), { recursive: true });
+    await writeFile(path.join(workspace, "schemas", "result.schema.json"), `${JSON.stringify({
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" }
+      }
+    })}\n`);
+    await writeFile(path.join(workspace, "write-result.js"), testCase.script.join("\n"));
+    await writeFile(path.join(workspace, "job.json"), `${JSON.stringify({
+      schema_version: 1,
+      job_id: testCase.jobId,
+      source: {
+        type: "git",
+        repo: workspace,
+        commit: "abc123"
+      },
+      working_dir: ".",
+      setup: [],
+      entry: {
+        type: "command",
+        command: "node write-result.js"
+      },
+      params: {},
+      param_passing: {
+        mode: "json_file",
+        path: ".git-runner/params.json"
+      },
+      outputs: {
+        result: {
+          path: "out/result.json",
+          schema: {
+            type: "json_schema",
+            file: "schemas/result.schema.json"
+          }
+        },
+        artifacts: []
+      },
+      execution: {
+        timeout_sec: 5,
+        max_stdout_bytes: 1000,
+        max_stderr_bytes: 1000
+      }
+    }, null, 2)}\n`);
+
+    const result = await runCli(["local", "run", "job.json", "--workspace", workspace, "--json"], workspace);
+
+    assert.equal(result.exitCode, EXIT_CODES.genericFailure, testCase.reason);
+    const outputBundle = JSON.parse(result.stdout);
+    const savedBundle = JSON.parse(await readFile(path.join(workspace, ".git-runner", "result-bundle.json"), "utf8"));
+    assert.deepEqual(outputBundle, savedBundle, testCase.reason);
+    assert.equal(savedBundle.schema_version, "git-runner.result-bundle.v1", testCase.reason);
+    assert.equal(savedBundle.status, "FAILED", testCase.reason);
+    assert.equal(savedBundle.reason, testCase.reason, testCase.reason);
+    assert.equal(savedBundle.error.reason, testCase.reason, testCase.reason);
+    assert.equal(savedBundle.error.emitted_by, "git-runner local run", testCase.reason);
+    assert.equal(savedBundle.error.retryable, false, testCase.reason);
+    assert.equal(savedBundle.outputs.result.schema.type, "json_schema", testCase.reason);
+    assert.equal(savedBundle.outputs.result.file, testCase.expectedFile, testCase.reason);
+    assert.deepEqual(savedBundle.outputs.result.value, testCase.expectedValue, testCase.reason);
+    assert.equal(savedBundle.outputs.result.warnings[0].code, testCase.reason, testCase.reason);
+    assert.equal(savedBundle.error.details[0].code, testCase.reason, testCase.reason);
+  }
+});
+
 test("local run distinguishes setup failure from entry command failure", async () => {
   const workspace = await tempDir();
   await writeFile(path.join(workspace, "job.json"), `${JSON.stringify({
