@@ -38,5 +38,8 @@ jobs:
       - name: Check syntax
         run: npm run check
 
-      - name: Run tests
+      - name: Run local contract tests
+        run: npm run test:local
+
+      - name: Run full test suite
         run: npm test
