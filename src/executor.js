@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import Ajv from "ajv";
+import Ajv2020 from "ajv/dist/2020.js";
 import { resolveInside } from "./path-utils.js";
 
 export async function runExecutorCli(argv) {
@@ -172,8 +173,7 @@ async function readResult({ workspacePath, resultConfig }) {
     if (resultConfig.schema?.type === "json_schema") {
       const schemaPath = resolveInside(workspacePath, resultConfig.schema.file, "result schema path");
       const schema = JSON.parse(await readFile(schemaPath, "utf8"));
-      const ajv = new Ajv();
-      const validate = ajv.compile(schema);
+      const validate = compileJsonSchema(schema);
       if (!validate(parsed)) {
         return {
           result: parsed,
@@ -197,4 +197,12 @@ async function readResult({ workspacePath, resultConfig }) {
       result_warnings: [{ code: "result_invalid", message: error.message }]
     };
   }
+}
+
+function compileJsonSchema(schema) {
+  const schemaVersion = typeof schema.$schema === "string" ? schema.$schema : "";
+  const ajv = schemaVersion.includes("2020-12")
+    ? new Ajv2020({ strict: false })
+    : new Ajv({ strict: false });
+  return ajv.compile(schema);
 }

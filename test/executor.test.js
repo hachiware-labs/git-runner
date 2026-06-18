@@ -89,6 +89,44 @@ test("executor records result_invalid warning for JSON schema failure", async ()
   assert.equal(summary.result_warnings[0].code, "result_invalid");
 });
 
+test("executor validates JSON Schema draft 2020-12 results", async () => {
+  const workspace = await tempWorkspace();
+  await mkdir(path.join(workspace, "schemas"), { recursive: true });
+  await writeFile(path.join(workspace, "schemas", "result.schema.json"), `${JSON.stringify({
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    required: ["schema_version", "metrics"],
+    properties: {
+      schema_version: { const: "research-booster.v1" },
+      metrics: {
+        type: "object",
+        required: ["judge_score"],
+        properties: {
+          judge_score: { type: "number" }
+        }
+      }
+    }
+  })}\n`);
+  await writeFile(path.join(workspace, "run.js"), [
+    "const fs = require('fs');",
+    "fs.mkdirSync('.git-runner', { recursive: true });",
+    "fs.writeFileSync('.git-runner/result.json', JSON.stringify({ schema_version: 'research-booster.v1', metrics: { judge_score: 0.82 } }));",
+    ""
+  ].join("\n"));
+
+  const request = baseRequest(workspace, "node run.js");
+  request.outputs.result.schema = {
+    type: "json_schema",
+    file: "schemas/result.schema.json"
+  };
+
+  const summary = await runExecutor(request);
+
+  assert.equal(summary.exit_code, 0);
+  assert.deepEqual(summary.result_warnings, []);
+  assert.deepEqual(summary.result.metrics, { judge_score: 0.82 });
+});
+
 test("executor truncates stdout and stderr at configured byte limits", async () => {
   const workspace = await tempWorkspace();
   await writeFile(path.join(workspace, "run.js"), [

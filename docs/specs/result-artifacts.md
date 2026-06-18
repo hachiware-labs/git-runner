@@ -59,6 +59,7 @@ Rules:
 - result file is required.
 - result file must parse as JSON.
 - schema file path is relative to repository root.
+- JSON Schema draft-07 and draft 2020-12 are supported.
 - JSON Schema validation must pass.
 - If command succeeds but result validation fails, job status is `FAILED` with reason `result_invalid` or `result_missing`.
 
