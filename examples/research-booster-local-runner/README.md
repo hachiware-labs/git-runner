@@ -2,10 +2,13 @@
 
 This fixture is the git-runner-side acceptance contract for `git-runner local run`.
 
-It is derived from the Research Booster E2E fixture:
+It is a path-rebased snapshot derived from the Research Booster E2E fixture:
 
 - `docs/git-runner/implementation-briefs/0001-local-runner.md`
 - `examples/git-runner-research-booster-e2e/local-runner-acceptance.json`
+- `examples/git-runner-research-booster-e2e/local_runner_mock.py`
+
+Only the sample paths are rewritten from `examples/git-runner-research-booster-e2e/` to `examples/research-booster-local-runner/`. The Python mock remains Research Booster-side reference material; the JS/npm implementation in this repository is the executable target.
 
 The fixture is valid when:
 

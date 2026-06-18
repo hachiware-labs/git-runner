@@ -177,4 +177,4 @@ Required Research Booster-compatible fields:
 
 The initial acceptance fixture is [examples/research-booster-local-runner/local-runner-acceptance.json](../../examples/research-booster-local-runner/local-runner-acceptance.json).
 
-It is derived from Research Booster's `git-runner-research-booster-e2e` fixture and is accepted as git-runner's local runner contract.
+It is a path-rebased snapshot derived from Research Booster's `git-runner-research-booster-e2e` fixture and is accepted as git-runner's local runner contract. The fixture records its source brief, source acceptance fixture, reference mock, and path rewrite metadata so drift can be reviewed explicitly.

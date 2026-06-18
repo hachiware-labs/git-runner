@@ -742,6 +742,14 @@ test("local run satisfies the Research Booster acceptance fixture", async (t) =>
   );
   const acceptancePath = path.join(workspace, "examples", "research-booster-local-runner", "local-runner-acceptance.json");
   const acceptance = JSON.parse(await readFile(acceptancePath, "utf8"));
+  assert.equal(
+    acceptance.derived_from.acceptance_fixture,
+    "research-booster/examples/git-runner-research-booster-e2e/local-runner-acceptance.json"
+  );
+  assert.equal(
+    acceptance.derived_from.path_rewrites[0].to,
+    "examples/research-booster-local-runner/"
+  );
   await mkdir(path.join(workspace, "schemas"), { recursive: true });
   await writeFile(path.join(workspace, "schemas", "research-booster.v1.schema.json"), `${JSON.stringify({
     type: "object",
