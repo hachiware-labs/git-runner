@@ -251,6 +251,12 @@ npm test
 
 test suite には local CLI tests と、local NATS server binary が利用できる場合の NATS integration tests が含まれます。
 
+`local run`、Result Bundle validation、executor、local job-store reads を NATS なしで素早く確認する場合:
+
+```bash
+npm run test:local
+```
+
 ## Documentation
 
 - [English README](README.md)
