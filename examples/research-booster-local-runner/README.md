@@ -12,7 +12,7 @@ Only the sample paths are rewritten from `examples/git-runner-research-booster-e
 
 The fixture is valid when:
 
-1. Research Booster writes `schemas/research-booster.v1.schema.json`.
+1. Research Booster writes `schemas/research-booster.v1.schema.json`, or the local representative schema fixture is copied from `examples/research-booster-local-runner/schemas/research-booster.v1.schema.json`.
 2. `git-runner local run examples/research-booster-local-runner/job.json --bundle .git-runner/result-bundle.json` exits `0`.
 3. The bundle satisfies `local-runner-acceptance.json`.
 4. Research Booster can import `.git-runner/result-bundle.json`.

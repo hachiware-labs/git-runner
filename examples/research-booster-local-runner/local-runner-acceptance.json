@@ -16,7 +16,8 @@
   "job": "examples/research-booster-local-runner/job.json",
   "schema_setup": {
     "command": "research-booster result schema --write schemas/research-booster.v1.schema.json",
-    "creates": "schemas/research-booster.v1.schema.json"
+    "creates": "schemas/research-booster.v1.schema.json",
+    "local_fixture": "examples/research-booster-local-runner/schemas/research-booster.v1.schema.json"
   },
   "command_under_test": {
     "command": "git-runner local run examples/research-booster-local-runner/job.json --bundle .git-runner/result-bundle.json",

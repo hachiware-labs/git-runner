@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -750,29 +750,15 @@ test("local run satisfies the Research Booster acceptance fixture", async (t) =>
     acceptance.derived_from.path_rewrites[0].to,
     "examples/research-booster-local-runner/"
   );
+  assert.equal(
+    acceptance.schema_setup.local_fixture,
+    "examples/research-booster-local-runner/schemas/research-booster.v1.schema.json"
+  );
   await mkdir(path.join(workspace, "schemas"), { recursive: true });
-  await writeFile(path.join(workspace, "schemas", "research-booster.v1.schema.json"), `${JSON.stringify({
-    type: "object",
-    required: ["schema_version", "status", "metrics", "evaluation_context"],
-    properties: {
-      schema_version: { const: "research-booster.v1" },
-      status: { const: "completed" },
-      metrics: {
-        type: "object",
-        required: ["judge_score"],
-        properties: {
-          judge_score: { type: "number" }
-        }
-      },
-      evaluation_context: {
-        type: "object",
-        required: ["eval_suite_id"],
-        properties: {
-          eval_suite_id: { type: "string" }
-        }
-      }
-    }
-  }, null, 2)}\n`);
+  await copyFile(
+    path.join(workspace, acceptance.schema_setup.local_fixture),
+    path.join(workspace, acceptance.schema_setup.creates)
+  );
 
   const result = await runCli([
     "local",

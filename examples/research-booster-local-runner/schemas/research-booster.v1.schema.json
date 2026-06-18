@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-booster.local/schemas/research-booster.v1.schema.json",
+  "title": "Research Booster Result",
+  "description": "Representative Research Booster result schema used by git-runner local-run acceptance tests.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "status",
+    "metrics",
+    "artifacts",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "research-booster.v1"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "failed",
+        "cancelled",
+        "error",
+        "skipped"
+      ]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "number",
+          "string",
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "evaluation_context": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "eval_suite_id": {
+          "type": "string"
+        },
+        "eval_suite_version": {
+          "type": "string"
+        },
+        "dataset": {
+          "type": "string"
+        },
+        "split": {
+          "type": "string"
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seed": {
+          "type": "integer"
+        }
+      }
+    },
+    "error_slices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "number",
+                "string",
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "name",
+          "path"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
