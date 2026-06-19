@@ -104,6 +104,8 @@ Required behavior:
 
 `eligible: true` is not permission to delete `execution.lock`. It means the dry-run found the minimum state needed to begin operator review. The operator must still confirm the worker is no longer executing the job, preserve lock metadata for audit, and decide whether manual recovery is appropriate.
 
+### 5.1 Eligible: `ready_for_manual_confirmation`
+
 Example eligible output:
 
 ```json
@@ -134,6 +136,8 @@ Example eligible output:
   ]
 }
 ```
+
+### 5.2 Ineligible: `terminal_result_exists`
 
 Example ineligible output when a terminal result already exists:
 
