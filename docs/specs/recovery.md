@@ -104,6 +104,70 @@ Required behavior:
 
 `eligible: true` is not permission to delete `execution.lock`. It means the dry-run found the minimum state needed to begin operator review. The operator must still confirm the worker is no longer executing the job, preserve lock metadata for audit, and decide whether manual recovery is appropriate.
 
+Example eligible output:
+
+```json
+{
+  "schema_version": 1,
+  "command": "recover-lock",
+  "dry_run": true,
+  "job_id": "job_stale_lock",
+  "eligible": true,
+  "reason": "ready_for_manual_confirmation",
+  "stale_after_sec": 300,
+  "execution_lock": {
+    "present": true,
+    "worker_id": "local-001",
+    "pid": 123,
+    "acquired_at": "2026-06-18T00:00:00.000Z",
+    "stale_after_sec": 300,
+    "age_sec": 900,
+    "stale": true
+  },
+  "terminal_result": {
+    "present": false
+  },
+  "next_steps": [
+    "Confirm the recorded worker process is no longer executing this job.",
+    "Archive execution.lock for audit before removing it.",
+    "Remove only execution.lock, then resume according to the delivery mode."
+  ]
+}
+```
+
+Example ineligible output when a terminal result already exists:
+
+```json
+{
+  "schema_version": 1,
+  "command": "recover-lock",
+  "dry_run": true,
+  "job_id": "job_done_lock",
+  "eligible": false,
+  "reason": "terminal_result_exists",
+  "stale_after_sec": 300,
+  "execution_lock": {
+    "present": true,
+    "worker_id": "local-001",
+    "pid": 123,
+    "acquired_at": "2026-06-18T00:00:00.000Z",
+    "stale_after_sec": 300,
+    "age_sec": 900,
+    "stale": true
+  },
+  "terminal_result": {
+    "present": true,
+    "status": "COMPLETED",
+    "reason": null
+  },
+  "next_steps": [
+    "Preserve the existing terminal result; do not remove the lock for rerun recovery."
+  ]
+}
+```
+
+When `reason` is `terminal_result_exists`, do not remove `execution.lock` to force a rerun. A terminal result is already the recorded outcome, so deleting the lock can create duplicate or contradictory execution history.
+
 ## 6. Future Mutating Recovery Contract
 
 A future mutating mode may automate the manual steps:
