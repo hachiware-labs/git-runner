@@ -479,6 +479,14 @@ test("validate-bundle reports failed Result Bundle files as schema-valid", async
     assert.equal(report.status, "FAILED", reason);
     assert.equal(report.reason, reason, reason);
     assert.equal(report.result_warnings[0].code, reason, reason);
+
+    if (reason === "result_invalid") {
+      const textResult = await runCli(["validate-bundle", bundleFile], cwd);
+      assert.equal(textResult.exitCode, EXIT_CODES.success, reason);
+      assert.match(textResult.stdout, /valid: true/, reason);
+      assert.match(textResult.stdout, /status: FAILED/, reason);
+      assert.match(textResult.stdout, /reason: result_invalid/, reason);
+    }
   }
 });
 
