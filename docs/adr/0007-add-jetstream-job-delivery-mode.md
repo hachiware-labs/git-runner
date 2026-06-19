@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted, superseded in part by [ADR 0008](0008-make-jetstream-default-delivery-mode.md)
 
 ## Context
 
@@ -27,7 +27,7 @@ JetStream contract:
 - ack policy: explicit
 - max ack pending: `1`
 
-Default behavior remains NATS core request/reply. JetStream is opt-in so existing local development, tests, and deployments do not require a JetStream-enabled server unless they choose durable delivery.
+At the time of this ADR, default behavior remained NATS core request/reply and JetStream was opt-in. ADR 0008 later changed the default to JetStream while keeping this stream and consumer contract.
 
 The submitter publishes the same Job Spec payload to the same routing subject. In JetStream mode the publisher ensures the stream exists and publishes with `msgID` equal to `job_id`.
 
@@ -52,7 +52,7 @@ The local job store execution lock is part of the idempotency policy:
 
 ### Make JetStream the default
 
-This simplifies delivery semantics, but it would require JetStream for every non-dry-run flow. Keeping core request/reply as default preserves the lightweight local setup and existing behavior.
+This was rejected for the initial JetStream rollout, then accepted later in ADR 0008 after the durable delivery, execution lock, recovery diagnostics, and local contract tests were in place.
 
 ### Keep core NATS only
 

@@ -20,6 +20,7 @@ Schema:
 {
   "schema_version": 1,
   "nats_url": "nats://localhost:4222",
+  "delivery_mode": "jetstream",
   "default_worker_tags": ["default"],
   "param_passing": {
     "mode": "json_file",
@@ -46,6 +47,7 @@ Schema:
 Rules:
 
 - `schema_version` is required and must be `1`.
+- `delivery_mode` defaults to `jetstream` and must be `core` or `jetstream`.
 - CLI options override config values.
 - Environment variables override config values only for fields explicitly documented by the CLI spec.
 - `git-runner init` must not overwrite an existing config unless a future `--force` option is added.
@@ -71,7 +73,7 @@ Schema:
   "workspace_root": ".git-runner/workspaces",
   "repo_cache_root": ".git-runner/repo-cache",
   "job_store_root": ".git-runner/jobs",
-  "delivery_mode": "core",
+  "delivery_mode": "jetstream",
   "cleanup": {
     "mode": "after_job"
   }
@@ -88,7 +90,7 @@ Rules:
 - `allowed_repos` defaults to `[]`.
 - `allow_all_repos` defaults to `false`.
 - If `allow_all_repos` is `false` and `allowed_repos` is empty, the worker starts but denies all repository jobs.
-- `delivery_mode` defaults to `core` and must be `core` or `jetstream`.
+- `delivery_mode` defaults to `jetstream` and must be `core` or `jetstream`.
 - `cleanup.mode` defaults to `after_job`.
 
 ## 3. Environment Variables

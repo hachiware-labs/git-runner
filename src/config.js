@@ -9,6 +9,7 @@ export function defaultProjectConfig() {
   return {
     schema_version: 1,
     nats_url: "nats://localhost:4222",
+    delivery_mode: "jetstream",
     default_worker_tags: ["default"],
     param_passing: {
       mode: "json_file",
@@ -43,6 +44,7 @@ export function defaultWorkerConfig() {
     workspace_root: ".git-runner/workspaces",
     repo_cache_root: ".git-runner/repo-cache",
     job_store_root: ".git-runner/jobs",
+    delivery_mode: "jetstream",
     cleanup: {
       mode: "after_job"
     }

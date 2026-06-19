@@ -78,7 +78,7 @@ Do not remove `job-spec.json`, `status.json`, logs, artifacts, or `result-summar
 
 Recovery depends on delivery mode:
 
-- JetStream mode: start a matching `git-runner worker --jetstream`. If the message was not acknowledged, JetStream can redeliver it after `ack_wait` or after consumer state advances.
+- JetStream mode: start a matching `git-runner worker`. If the message was not acknowledged, JetStream can redeliver it after `ack_wait` or after consumer state advances. `--jetstream` may be included only to spell out the default.
 - Core request/reply mode: there is no durable queued message. Submit a new job if rerun is required.
 - Core publish-only mode: there is no durable queued message. Submit a new job if rerun is required.
 

@@ -129,6 +129,10 @@ function parseArgs(argv) {
       case "--jetstream":
         options.deliveryMode = "jetstream";
         break;
+      case "--delivery-mode":
+        options.deliveryMode = requireValue(argv, index, arg);
+        index += 1;
+        break;
       case "--repo":
         options.repo = requireValue(argv, index, arg);
         index += 1;
@@ -270,7 +274,7 @@ async function commandInit(args, context) {
 
 async function commandSubmit(args, context) {
   if (args.help) {
-    return "git-runner submit --command <command> [--repo .] [--branch name] [--commit sha] [--dry-run] [--jetstream] [--no-require-worker] [--json]\n";
+    return "git-runner submit --command <command> [--repo .] [--branch name] [--commit sha] [--dry-run] [--jetstream] [--delivery-mode core|jetstream] [--no-require-worker] [--json]\n";
   }
   if (!args.command) {
     throw new CliError("missing required option: --command", EXIT_CODES.invalidUsage);
@@ -278,15 +282,18 @@ async function commandSubmit(args, context) {
   if (args.timeoutSec !== undefined && (!Number.isInteger(args.timeoutSec) || args.timeoutSec <= 0)) {
     throw new CliError("--timeout-sec must be a positive integer", EXIT_CODES.invalidUsage);
   }
-  if (args.deliveryMode === "jetstream" && args.requireWorker === false) {
-    throw new CliError("--jetstream cannot be combined with --no-require-worker", EXIT_CODES.invalidUsage);
-  }
-
   const { config } = await loadProjectConfig({
     cwd: context.cwd,
     configPath: args.configPath,
     env: context.env
   });
+  const deliveryMode = args.deliveryMode ?? config.delivery_mode ?? "jetstream";
+  if (!["core", "jetstream"].includes(deliveryMode)) {
+    throw new CliError("delivery_mode must be core or jetstream", EXIT_CODES.invalidUsage);
+  }
+  if (deliveryMode === "jetstream" && args.requireWorker === false) {
+    throw new CliError("--no-require-worker cannot be combined with JetStream delivery", EXIT_CODES.invalidUsage);
+  }
   const repoInput = args.repo ?? ".";
   const repoPath = resolvePath(context.cwd, repoInput);
   const repoRoot = await inspectRepository(repoPath);
@@ -349,7 +356,7 @@ async function commandSubmit(args, context) {
       subject,
       jobSpec,
       requireWorker: args.requireWorker !== false,
-      deliveryMode: args.deliveryMode ?? "core"
+      deliveryMode
     });
   } catch (error) {
     await removeJobFromStore({
@@ -440,7 +447,7 @@ async function commandRecoverLock(args, context) {
 
 async function commandWorker(args, context) {
   if (args.help) {
-    return "git-runner worker --worker-id <id> --worker-key <key> [--tags default] [--allow-repo repo] [--allow-all-repos] [--jetstream] [--once]\n";
+    return "git-runner worker --worker-id <id> --worker-key <key> [--tags default] [--allow-repo repo] [--allow-all-repos] [--jetstream] [--delivery-mode core|jetstream] [--once]\n";
   }
   await runWorker({
     cwd: context.cwd,

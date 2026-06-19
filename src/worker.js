@@ -106,7 +106,7 @@ function mergeWorkerOptions(config, options) {
     workspace_root: options.workspaceRoot ?? config.workspace_root ?? ".git-runner/workspaces",
     job_store_root: options.jobStoreRoot ?? config.job_store_root ?? ".git-runner/jobs",
     cleanup: config.cleanup ?? { mode: "after_job" },
-    delivery_mode: options.deliveryMode ?? config.delivery_mode ?? "core",
+    delivery_mode: options.deliveryMode ?? config.delivery_mode ?? "jetstream",
     once: Boolean(options.once)
   };
 }

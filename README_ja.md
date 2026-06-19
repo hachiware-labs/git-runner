@@ -24,10 +24,10 @@ branch 名は動きます。`git-runner` は実行対象を commit SHA に固定
 - `git-runner submit`
 - `git-runner submit --dry-run`
 - `git-runner submit --commit-and-push`
-- `git-runner submit --jetstream`
+- `git-runner submit --delivery-mode core`
 - `git-runner worker --once`
 - NATS への job publish と worker subscribe
-- JetStream による任意の durable job delivery
+- JetStream による default durable job delivery
 - `source.commit` の detached checkout
 - worker tag / repository policy
 - timeout と cancellation
@@ -54,7 +54,7 @@ MVP の対象外:
 - Node.js 22 以上
 - Git
 - dry-run 以外の submit/worker flow では NATS server
-- `--jetstream` を使う場合は JetStream 有効の NATS server
+- default の submit/worker flow では JetStream 有効の NATS server
 
 この checkout で依存関係を入れます。
 
@@ -127,17 +127,15 @@ node bin/git-runner.js validate-bundle .git-runner/jobs/<job-id>/result-bundle.j
 
 通しの手順は [docs/tutorial_ja.md](docs/tutorial_ja.md) を参照してください。
 
-重要: MVP の default job dispatch は NATS core request/reply を使っており、durable queue ではありません。default では、`submit` は一致する worker が job message を accept したことを確認してから戻ります。worker が accept しない場合、pending job を残さずに失敗します。この guard を意図的に外す場合だけ `--no-require-worker` を使います。
-
-durable な local delivery が必要な場合は、NATS を JetStream 有効で起動し、submit と worker の両方に `--jetstream` を渡します。
+重要: default の job dispatch は NATS JetStream を使います。`submit` は job を stream `GIT_RUNNER_JOBS` に保存し、一致する worker は submit 後に起動しても job を受け取れます。NATS は JetStream 有効で起動してください。
 
 ```bash
 nats-server -js
-node bin/git-runner.js submit --repo . --command "npm test" --jetstream
-node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+node bin/git-runner.js submit --repo . --command "npm test"
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
 ```
 
-JetStream mode では、`submit` は job を stream `GIT_RUNNER_JOBS` に保存します。一致する worker は submit 後に起動しても job を受け取れます。delivery は at-least-once です。同じ `job_store_root` を共有する worker は local job store の execution lock で重複実行を避けますが、worker が terminal result を書く前に crash した場合に備えて、command は再実行されてもよい形にする必要があります。
+delivery は at-least-once です。同じ `job_store_root` を共有する worker は local job store の execution lock で重複実行を避けますが、worker が terminal result を書く前に crash した場合に備えて、command は再実行されてもよい形にする必要があります。`--jetstream` は default を明示する指定として引き続き使えます。
 
 worker が job を accept した後、validation や execution の前に crash した場合、latest status が `ACCEPTED` のまま残ることがあります。これは job が worker に届いたが、terminal result は記録されていない状態を意味します。
 
@@ -180,23 +178,24 @@ node bin/git-runner.js submit --repo . --command "npm test" --dry-run --json
 node bin/git-runner.js submit --repo . --command "npm test"
 ```
 
-実行されるには、対象 NATS subject を購読している worker が先に起動している必要があります。
+default の JetStream delivery では、matching worker が consume するまで durable な pending job として残ります。
 
-worker dispatch guard を bypass:
-
-```bash
-node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
-```
-
-guard を外すと、`submit` は publish-only delivery を使います。NATS core は後から subscribe した worker のために job を保持しません。
-
-JetStream durable delivery を使う:
+legacy NATS core delivery を使う:
 
 ```bash
-nats-server -js
-node bin/git-runner.js submit --repo . --command "npm test" --jetstream
-node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+node bin/git-runner.js submit --repo . --command "npm test" --delivery-mode core
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --delivery-mode core --once
 ```
+
+core delivery は request/reply を使い、`submit` が戻る前に matching worker が job を accept する必要があります。
+
+core の worker dispatch guard を bypass:
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test" --delivery-mode core --no-require-worker
+```
+
+guard を外すと、core delivery は publish-only delivery を使います。NATS core は後から subscribe した worker のために job を保持しません。`--no-require-worker` は default の JetStream delivery では invalid です。
 
 Job Spec を local で実行し、Result Bundle を出力する:
 

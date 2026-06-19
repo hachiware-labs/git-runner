@@ -92,6 +92,7 @@ git-runner submit \
   [--worker-tags default] \
   [--timeout-sec 3600] \
   [--jetstream] \
+  [--delivery-mode core|jetstream] \
   [--no-require-worker] \
   [--dry-run]
 ```
@@ -132,15 +133,16 @@ If `--dry-run` is not provided, submit writes local pending job metadata and dis
 
 Dispatch behavior:
 
-- By default, submit uses NATS request/reply on the job subject and requires a matching worker to accept the job message before returning.
-- If no worker accepts the job, submit fails with NATS exit code `4` and removes the local pending job metadata.
-- `--no-require-worker` disables this guard and uses publish-only delivery.
-- With the guard disabled, NATS core publish/subscribe does not retain the job for workers that subscribe later.
-- `--jetstream` publishes the job to JetStream stream `GIT_RUNNER_JOBS`.
+- By default, submit publishes the job to JetStream stream `GIT_RUNNER_JOBS`.
 - In JetStream mode, a matching worker can start after submit and still receive the job.
-- `--jetstream` requires the NATS server to have JetStream enabled. The CLI does not start or manage the NATS server.
+- JetStream delivery requires the NATS server to have JetStream enabled. The CLI does not start or manage the NATS server.
 - JetStream delivery is at-least-once. The worker acknowledges the message only after a terminal job result is written.
-- `--jetstream` and `--no-require-worker` are mutually exclusive because `--no-require-worker` only applies to NATS core dispatch.
+- `--jetstream` is accepted as an explicit spelling of the default.
+- `--delivery-mode core` uses NATS request/reply on the job subject and requires a matching worker to accept the job message before returning.
+- In core mode, if no worker accepts the job, submit fails with NATS exit code `4` and removes the local pending job metadata.
+- In core mode, `--no-require-worker` disables this guard and uses publish-only delivery.
+- With the core guard disabled, NATS core publish/subscribe does not retain the job for workers that subscribe later.
+- JetStream delivery and `--no-require-worker` are mutually exclusive because `--no-require-worker` only applies to NATS core dispatch.
 
 Submit builds a Job Spec and dispatches it to:
 
@@ -185,6 +187,7 @@ git-runner worker \
   [--allow-repo git@github.com:user/project.git] \
   [--allow-all-repos] \
   [--jetstream] \
+  [--delivery-mode core|jetstream] \
   [--once] \
   [--job-store-root .git-runner/jobs] \
   [--config .git-runner/worker.json]
@@ -200,7 +203,7 @@ Behavior:
 1. Load worker config.
 2. Connect to NATS.
 3. Validate worker key according to MVP policy.
-4. Subscribe to job subjects for configured tags, or bind JetStream durable consumers when `--jetstream` or `delivery_mode: "jetstream"` is configured.
+4. Bind JetStream durable consumers for configured tags, or subscribe to core job subjects when `--delivery-mode core` or `delivery_mode: "core"` is configured.
 5. Validate job against worker policy.
 6. Prepare workspace.
 7. Start executor process.
@@ -211,8 +214,8 @@ If `--once` is provided, worker exits after one accepted job reaches a terminal 
 
 Delivery modes:
 
-- `core`: default. Worker subscribes to NATS core subjects `git-runner.jobs.<tag>`.
-- `jetstream`: worker creates or binds durable consumers for `GIT_RUNNER_JOBS`, filtered by `git-runner.jobs.<tag>`.
+- `jetstream`: default. Worker creates or binds durable consumers for `GIT_RUNNER_JOBS`, filtered by `git-runner.jobs.<tag>`.
+- `core`: worker subscribes to NATS core subjects `git-runner.jobs.<tag>`.
 
 Repository policy:
 

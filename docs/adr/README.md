@@ -11,6 +11,7 @@
 - [0005 Keep Research Booster semantics outside git-runner](0005-keep-research-booster-semantics-outside-git-runner.md)
 - [0006 Use local filesystem job store for MVP](0006-use-local-filesystem-job-store-for-mvp.md)
 - [0007 Add JetStream job delivery mode](0007-add-jetstream-job-delivery-mode.md)
+- [0008 Make JetStream the default delivery mode](0008-make-jetstream-default-delivery-mode.md)
 
 ## ADR フォーマット
 

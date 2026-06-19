@@ -121,9 +121,9 @@ NATS events are used to transport updates.
 
 Job delivery modes:
 
-- Default core mode: submit uses NATS core request/reply on `git-runner.jobs.<routing-tag>` and requires a worker to accept the job message before returning.
-- Core publish-only mode: if the guard is bypassed with `--no-require-worker`, submit publishes to the core subject and a worker must already be subscribed when submit publishes the job.
-- JetStream mode: `--jetstream` publishes to stream `GIT_RUNNER_JOBS`, which stores subjects `git-runner.jobs.*`. Workers bind durable consumers filtered by tag, so a worker can start after submit and still receive matching jobs.
+- Default JetStream mode: submit publishes to stream `GIT_RUNNER_JOBS`, which stores subjects `git-runner.jobs.*`. Workers bind durable consumers filtered by tag, so a worker can start after submit and still receive matching jobs.
+- Core mode: `--delivery-mode core` uses NATS core request/reply on `git-runner.jobs.<routing-tag>` and requires a worker to accept the job message before returning.
+- Core publish-only mode: if the guard is bypassed with `--delivery-mode core --no-require-worker`, submit publishes to the core subject and a worker must already be subscribed when submit publishes the job.
 
 JetStream delivery is at-least-once. The worker acknowledges a JetStream job message after writing the terminal result summary and terminal status. If the worker crashes before acknowledgement, NATS can redeliver the message.
 
@@ -150,7 +150,7 @@ RUNNING -> CANCELLED
 
 Worker subscribes to `git-runner.cancels.<job-id>` after the job reaches `RUNNING`. A cancellation message moves a running job to `CANCELLED` with reason `cancelled`. If the executor is running, supervisor terminates it before publishing terminal status.
 
-Submitter writes `PENDING` to local job store when job is created. In default core mode, worker writes and publishes `ACCEPTED` after acquiring the execution lock and before responding to request/reply dispatch. In JetStream mode, worker writes and publishes `ACCEPTED` after pulling the message from its durable consumer and acquiring the execution lock. If a worker crashes after acceptance but before validation or execution, the latest status can remain `ACCEPTED`; this means the job was delivered to a worker but no terminal outcome was recorded. Worker publishes `RUNNING` after validating schema and policy.
+Submitter writes `PENDING` to local job store when job is created. In default JetStream mode, worker writes and publishes `ACCEPTED` after pulling the message from its durable consumer and acquiring the execution lock. In core mode, worker writes and publishes `ACCEPTED` after acquiring the execution lock and before responding to request/reply dispatch. If a worker crashes after acceptance but before validation or execution, the latest status can remain `ACCEPTED`; this means the job was delivered to a worker but no terminal outcome was recorded. Worker publishes `RUNNING` after validating schema and policy.
 
 Inspection commands may compute stale diagnostics for `ACCEPTED` and for an existing `execution.lock` without changing the stored status. MVP stale detection is read-only: it does not release locks and does not retry jobs. Manual recovery rules are defined in [recovery.md](recovery.md).
 

@@ -999,12 +999,12 @@ test("local run satisfies the Research Booster acceptance sample", async (t) => 
   }
 });
 
-test("submit rejects conflicting JetStream and core publish-only options", async () => {
+test("submit rejects default JetStream and core publish-only options", async () => {
   const cwd = await tempDir();
-  const result = await runCli(["submit", "--command", "npm test", "--jetstream", "--no-require-worker"], cwd);
+  const result = await runCli(["submit", "--command", "npm test", "--no-require-worker"], cwd);
 
   assert.equal(result.exitCode, EXIT_CODES.invalidUsage);
-  assert.match(result.stderr, /--jetstream cannot be combined/);
+  assert.match(result.stderr, /--no-require-worker cannot be combined with JetStream delivery/);
 });
 
 test("worker refuses to start without worker key", async () => {

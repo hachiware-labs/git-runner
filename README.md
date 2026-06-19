@@ -24,10 +24,10 @@ Implemented MVP capabilities:
 - `git-runner submit`
 - `git-runner submit --dry-run`
 - `git-runner submit --commit-and-push`
-- `git-runner submit --jetstream`
+- `git-runner submit --delivery-mode core`
 - `git-runner worker --once`
 - NATS job publish and worker subscribe
-- optional JetStream-backed durable job delivery
+- JetStream-backed durable job delivery by default
 - detached checkout of `source.commit`
 - worker policy checks for tags and repositories
 - timeout and cancellation handling
@@ -54,7 +54,7 @@ Out of scope for the MVP:
 - Node.js 22 or newer
 - Git
 - NATS server for non-dry-run submit/worker flows
-- NATS server with JetStream enabled when using `--jetstream`
+- NATS server with JetStream enabled for the default submit/worker flow
 
 Install dependencies from this checkout:
 
@@ -127,17 +127,15 @@ node bin/git-runner.js validate-bundle .git-runner/jobs/<job-id>/result-bundle.j
 
 For a complete walkthrough, see [docs/tutorial.md](docs/tutorial.md).
 
-Important: the MVP uses NATS core request/reply for default job dispatch, not a durable queue. By default, `submit` requires a matching worker to accept the job message before returning. If no worker accepts it, submit fails and does not leave a pending job. Use `--no-require-worker` only when you intentionally want to bypass this guard.
-
-For durable local delivery, start NATS with JetStream and pass `--jetstream` to both submit and worker:
+Important: the default job dispatch uses NATS JetStream. `submit` stores the job in stream `GIT_RUNNER_JOBS`, and a matching worker can start after submit and still receive the job. Start NATS with JetStream enabled:
 
 ```bash
 nats-server -js
-node bin/git-runner.js submit --repo . --command "npm test" --jetstream
-node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+node bin/git-runner.js submit --repo . --command "npm test"
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --once
 ```
 
-In JetStream mode, `submit` stores the job in stream `GIT_RUNNER_JOBS`; a matching worker can start after submit and still receive the job. Delivery is at-least-once. Workers use a local job store execution lock to avoid duplicate execution after redelivery or multi-worker delivery when they share the same `job_store_root`, but commands should still be safe to rerun if a worker crashes before writing a terminal result.
+Delivery is at-least-once. Workers use a local job store execution lock to avoid duplicate execution after redelivery or multi-worker delivery when they share the same `job_store_root`, but commands should still be safe to rerun if a worker crashes before writing a terminal result. `--jetstream` remains accepted as an explicit spelling of the default.
 
 If a worker accepts a job and then crashes before validation or execution, the latest status may remain `ACCEPTED`. That indicates the job was delivered to a worker but no terminal result was recorded.
 
@@ -180,23 +178,24 @@ Submit the current committed state:
 node bin/git-runner.js submit --repo . --command "npm test"
 ```
 
-For this to execute, at least one matching worker must already be subscribed to the NATS subject.
+With default JetStream delivery, this leaves a pending durable job until a matching worker consumes it.
 
-Bypass the worker dispatch guard:
-
-```bash
-node bin/git-runner.js submit --repo . --command "npm test" --no-require-worker
-```
-
-With the guard disabled, `submit` uses publish-only delivery and NATS core does not retain the job for a worker that subscribes later.
-
-Use JetStream durable delivery:
+Use legacy NATS core delivery:
 
 ```bash
-nats-server -js
-node bin/git-runner.js submit --repo . --command "npm test" --jetstream
-node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --jetstream --once
+node bin/git-runner.js submit --repo . --command "npm test" --delivery-mode core
+node bin/git-runner.js worker --worker-id local-001 --worker-key dev --allow-all-repos --delivery-mode core --once
 ```
+
+Core delivery uses request/reply and requires a matching worker to accept the job before `submit` returns.
+
+Bypass the core worker dispatch guard:
+
+```bash
+node bin/git-runner.js submit --repo . --command "npm test" --delivery-mode core --no-require-worker
+```
+
+With the guard disabled, core delivery uses publish-only delivery and NATS core does not retain the job for a worker that subscribes later. `--no-require-worker` is invalid with default JetStream delivery.
 
 Run a Job Spec locally and emit a Result Bundle:
 

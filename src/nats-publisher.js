@@ -4,7 +4,7 @@ import { publishJetStreamJob } from "./jetstream-jobs.js";
 
 const textEncoder = new TextEncoder();
 
-export async function publishJob({ natsUrl, subject, jobSpec, requireWorker = true, deliveryMode = "core" }) {
+export async function publishJob({ natsUrl, subject, jobSpec, requireWorker = true, deliveryMode = "jetstream" }) {
   if (!["core", "jetstream"].includes(deliveryMode)) {
     throw new CliError("deliveryMode must be core or jetstream", EXIT_CODES.invalidUsage);
   }

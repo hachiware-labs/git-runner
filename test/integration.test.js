@@ -125,8 +125,18 @@ async function withNats(t, fn, { jetstream = false } = {}) {
     windowsHide: true,
     stdio: ["ignore", "ignore", "ignore"]
   });
+  let natsExited = false;
+  nats.on("exit", () => {
+    natsExited = true;
+  });
   t.after(async () => {
-    nats.kill();
+    if (!natsExited) {
+      nats.kill();
+      await Promise.race([
+        new Promise((resolve) => nats.once("exit", resolve)),
+        new Promise((resolve) => setTimeout(resolve, 2000))
+      ]);
+    }
     if (storeDir) {
       await rm(storeDir, { recursive: true, force: true });
     }
@@ -285,15 +295,20 @@ test("submit dispatches to NATS and worker --once executes the command", async (
     assert.match(stdout, /worker-ran/);
     const artifact = await readFile(path.join(jobStoreRoot, submitOutput.job_id, result.artifacts[0].stored_path), "utf8");
     assert.equal(artifact, "# Report\n");
-  });
+  }, { jetstream: true });
 });
 
-test("submit fails fast when no matching worker accepts dispatch", async (t) => {
+test("core submit fails fast when no matching worker accepts dispatch", async (t) => {
   await withNats(t, async ({ natsUrl }) => {
     const sourceRepo = await createRunnableRepo();
     const { jobStoreRoot } = await createRunnerRoot();
 
-    const error = await submitJobFailure({ sourceRepo, jobStoreRoot, natsUrl });
+    const error = await submitJobFailure({
+      sourceRepo,
+      jobStoreRoot,
+      natsUrl,
+      extraArgs: ["--delivery-mode", "core"]
+    });
 
     assert.equal(error.code, 4);
     assert.match(error.stderr, /no worker accepted/);
@@ -301,7 +316,7 @@ test("submit fails fast when no matching worker accepts dispatch", async (t) => 
   });
 });
 
-test("submit can bypass worker dispatch guard explicitly", async (t) => {
+test("core submit can bypass worker dispatch guard explicitly", async (t) => {
   await withNats(t, async ({ natsUrl }) => {
     const sourceRepo = await createRunnableRepo();
     const { jobStoreRoot } = await createRunnerRoot();
@@ -310,7 +325,7 @@ test("submit can bypass worker dispatch guard explicitly", async (t) => {
       sourceRepo,
       jobStoreRoot,
       natsUrl,
-      extraArgs: ["--no-require-worker"]
+      extraArgs: ["--delivery-mode", "core", "--no-require-worker"]
     });
     const status = JSON.parse(await readFile(path.join(jobStoreRoot, submitOutput.job_id, "status.json"), "utf8"));
 
@@ -318,17 +333,12 @@ test("submit can bypass worker dispatch guard explicitly", async (t) => {
   });
 });
 
-test("jetstream submit persists job until worker starts", async (t) => {
+test("default JetStream submit persists job until worker starts", async (t) => {
   await withNats(t, async ({ natsUrl }) => {
     const sourceRepo = await createRunnableRepo();
     const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
 
-    const submitOutput = await submitJob({
-      sourceRepo,
-      jobStoreRoot,
-      natsUrl,
-      extraArgs: ["--jetstream"]
-    });
+    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl });
 
     const pending = JSON.parse(await readFile(path.join(jobStoreRoot, submitOutput.job_id, "status.json"), "utf8"));
     assert.equal(pending.status, "PENDING");
@@ -339,7 +349,7 @@ test("jetstream submit persists job until worker starts", async (t) => {
       jobStoreRoot,
       workspaceRoot,
       natsUrl,
-      extraArgs: ["--allow-all-repos", "--jetstream"]
+      extraArgs: ["--allow-all-repos"]
     });
 
     assert.equal(await worker.wait(), 0, worker.output().stderr);
@@ -372,7 +382,7 @@ test("execution lock prevents duplicate command execution across core workers", 
       workspaceRoot,
       natsUrl,
       workerId: "it-worker-a",
-      extraArgs: ["--allow-all-repos"]
+      extraArgs: ["--allow-all-repos", "--delivery-mode", "core"]
     });
     const workerB = await runWorkerOnce({
       t,
@@ -381,10 +391,16 @@ test("execution lock prevents duplicate command execution across core workers", 
       workspaceRoot,
       natsUrl,
       workerId: "it-worker-b",
-      extraArgs: ["--allow-all-repos"]
+      extraArgs: ["--allow-all-repos", "--delivery-mode", "core"]
     });
 
-    const submitOutput = await submitJob({ sourceRepo, jobStoreRoot, natsUrl, command });
+    const submitOutput = await submitJob({
+      sourceRepo,
+      jobStoreRoot,
+      natsUrl,
+      command,
+      extraArgs: ["--delivery-mode", "core"]
+    });
     assert.equal(await workerA.wait(), 0, workerA.output().stderr);
     assert.equal(await workerB.wait(), 0, workerB.output().stderr);
 
@@ -405,13 +421,20 @@ test("worker records worker_policy_denied when repository is not allowed", async
     const result = await readSummary(jobStoreRoot, submitOutput.job_id);
     assert.equal(result.status, "FAILED");
     assert.equal(result.reason, "worker_policy_denied");
-  });
+  }, { jetstream: true });
 });
 
 test("worker records worker_policy_denied when job tag is not allowed", async (t) => {
   await withNats(t, async ({ natsUrl }) => {
     const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
-    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+    const worker = await runWorkerOnce({
+      t,
+      runnerRoot,
+      jobStoreRoot,
+      workspaceRoot,
+      natsUrl,
+      extraArgs: ["--allow-all-repos", "--delivery-mode", "core"]
+    });
 
     await publishRawJob(natsUrl, "git-runner.jobs.default", {
       schema_version: 1,
@@ -473,7 +496,7 @@ test("worker records command_failed for non-zero command exit", async (t) => {
     assert.equal(result.status, "FAILED");
     assert.equal(result.reason, "command_failed");
     assert.equal(result.exit_code, 7);
-  });
+  }, { jetstream: true });
 });
 
 test("worker records timeout when executor exceeds timeout", async (t) => {
@@ -487,7 +510,7 @@ test("worker records timeout when executor exceeds timeout", async (t) => {
     const result = await readSummary(jobStoreRoot, submitOutput.job_id);
     assert.equal(result.status, "FAILED");
     assert.equal(result.reason, "timeout");
-  });
+  }, { jetstream: true });
 });
 
 test("worker records result_missing for required JSON schema result", async (t) => {
@@ -516,7 +539,7 @@ test("worker records result_missing for required JSON schema result", async (t) 
     const result = await readSummary(jobStoreRoot, submitOutput.job_id);
     assert.equal(result.status, "FAILED");
     assert.equal(result.reason, "result_missing");
-  });
+  }, { jetstream: true });
 });
 
 test("worker records result_invalid for JSON schema validation failure", async (t) => {
@@ -556,7 +579,7 @@ test("worker records result_invalid for JSON schema validation failure", async (
     const result = await readSummary(jobStoreRoot, submitOutput.job_id);
     assert.equal(result.status, "FAILED");
     assert.equal(result.reason, "result_invalid");
-  });
+  }, { jetstream: true });
 });
 
 test("worker records CANCELLED when cancel subject is published", async (t) => {
@@ -573,13 +596,20 @@ test("worker records CANCELLED when cancel subject is published", async (t) => {
     const result = await readSummary(jobStoreRoot, submitOutput.job_id);
     assert.equal(result.status, "CANCELLED");
     assert.equal(result.reason, "cancelled");
-  });
+  }, { jetstream: true });
 });
 
 test("worker records job_invalid for malformed job spec with job_id", async (t) => {
   await withNats(t, async ({ natsUrl }) => {
     const { runnerRoot, jobStoreRoot, workspaceRoot } = await createRunnerRoot();
-    const worker = await runWorkerOnce({ t, runnerRoot, jobStoreRoot, workspaceRoot, natsUrl, extraArgs: ["--allow-all-repos"] });
+    const worker = await runWorkerOnce({
+      t,
+      runnerRoot,
+      jobStoreRoot,
+      workspaceRoot,
+      natsUrl,
+      extraArgs: ["--allow-all-repos", "--delivery-mode", "core"]
+    });
 
     await publishRawJob(natsUrl, "git-runner.jobs.default", {
       schema_version: 1,
