@@ -102,6 +102,8 @@ Required behavior:
 - The command reports `eligible: false` when the lock is not stale for the selected threshold.
 - The command reports `eligible: true` only when a lock exists, no terminal result exists, and the lock is stale for the selected threshold.
 
+`eligible: true` is not permission to delete `execution.lock`. It means the dry-run found the minimum state needed to begin operator review. The operator must still confirm the worker is no longer executing the job, preserve lock metadata for audit, and decide whether manual recovery is appropriate.
+
 ## 6. Future Mutating Recovery Contract
 
 A future mutating mode may automate the manual steps:
