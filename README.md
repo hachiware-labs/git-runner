@@ -150,6 +150,8 @@ Inspect stale lock recovery preconditions without mutating the job store:
 node bin/git-runner.js recover-lock <job-id> --stale-after-sec 300
 ```
 
+`recover-lock` is read-only. It prints `dry_run: true`, `eligible`, `reason`, lock metadata, terminal-result presence, and `next_steps`. Treat `eligible: true` as a prompt for operator review, not as proof that the lock is safe to delete. Before removing or archiving `execution.lock`, confirm the recorded worker process is no longer running and preserve the lock metadata for audit.
+
 Validate a Job Spec in an existing workspace without NATS or Git checkout:
 
 ```bash

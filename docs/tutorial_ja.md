@@ -53,6 +53,14 @@ accepted job または execution lock を 30 秒で stale と判定する例:
 node bin/git-runner.js status <job-id> --stale-after-sec 30
 ```
 
+job store を変更せずに stale lock 復旧の前提条件を確認する例:
+
+```bash
+node bin/git-runner.js recover-lock <job-id> --stale-after-sec 300
+```
+
+`recover-lock` は dry-run 診断 command です。手動操作に進む前に `eligible`、`reason`、`next_steps` を確認してください。`eligible: true` は lock が stale で terminal result がないことを意味しますが、`execution.lock` に触る前に、記録された worker process がもう動いていないことを人間が確認する必要があります。
+
 durable な job delivery が必要な場合は、NATS を JetStream 有効で起動します。
 
 ```bash

@@ -53,6 +53,14 @@ To flag an accepted job or execution lock as stale after 30 seconds:
 node bin/git-runner.js status <job-id> --stale-after-sec 30
 ```
 
+To inspect stale-lock recovery preconditions without changing job-store files:
+
+```bash
+node bin/git-runner.js recover-lock <job-id> --stale-after-sec 300
+```
+
+`recover-lock` is a dry-run diagnostic command. Read `eligible`, `reason`, and `next_steps` before taking manual action. `eligible: true` means the lock is stale and no terminal result exists; it still requires a human to confirm that the recorded worker process is no longer running before touching `execution.lock`.
+
 For durable job delivery, start NATS with JetStream:
 
 ```bash
