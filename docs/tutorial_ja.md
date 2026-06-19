@@ -36,7 +36,7 @@ git rev-parse --verify HEAD
 別 terminal で local NATS server を起動します。
 
 ```bash
-nats-server
+nats-server -js
 ```
 
 submit と worker を動かす間、この terminal は起動したままにします。
@@ -61,13 +61,7 @@ node bin/git-runner.js recover-lock <job-id> --stale-after-sec 300
 
 `recover-lock` は dry-run 診断 command です。手動操作に進む前に `eligible`、`reason`、`next_steps` を確認してください。`eligible: true` は lock が stale で terminal result がないことを意味しますが、`execution.lock` に触る前に、記録された worker process がもう動いていないことを人間が確認する必要があります。
 
-NATS は JetStream 有効で起動します。
-
-```bash
-nats-server -js
-```
-
-その後は通常どおり `submit` と `worker` を実行します。`--jetstream` は default を明示する指定として引き続き使えます。
+以降の command は、この default JetStream mode を使います。`--jetstream` は default を明示する指定として引き続き使えます。
 
 ## 3. git-runner config を初期化する
 

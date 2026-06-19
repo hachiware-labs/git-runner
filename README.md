@@ -80,7 +80,7 @@ git-runner --help
 Start NATS in one terminal:
 
 ```bash
-nats-server
+nats-server -js
 ```
 
 Start a one-job worker in another terminal and leave it waiting:
@@ -258,6 +258,8 @@ CI runs the same order: syntax check, local contract tests, then the full test s
 ## Documentation
 
 - [Japanese README](README_ja.md)
+- [English manual](docs/manual.md)
+- [Japanese manual](docs/manual_ja.md)
 - [English tutorial](docs/tutorial.md)
 - [Japanese tutorial](docs/tutorial_ja.md)
 - [Document index](docs/README.md)

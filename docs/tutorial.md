@@ -36,7 +36,7 @@ git rev-parse --verify HEAD
 Start a local NATS server in a separate terminal:
 
 ```bash
-nats-server
+nats-server -js
 ```
 
 Keep that terminal running while you submit and process jobs.
@@ -61,13 +61,7 @@ node bin/git-runner.js recover-lock <job-id> --stale-after-sec 300
 
 `recover-lock` is a dry-run diagnostic command. Read `eligible`, `reason`, and `next_steps` before taking manual action. `eligible: true` means the lock is stale and no terminal result exists; it still requires a human to confirm that the recorded worker process is no longer running before touching `execution.lock`.
 
-Start NATS with JetStream:
-
-```bash
-nats-server -js
-```
-
-Then run `submit` and `worker` normally. `--jetstream` remains accepted as an explicit spelling of the default.
+The commands below use this default JetStream mode. `--jetstream` remains accepted as an explicit spelling of the default.
 
 ## 3. Initialize git-runner Config
 
