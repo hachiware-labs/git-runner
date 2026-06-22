@@ -1,6 +1,6 @@
 {
   "name": "@research-booster/git-runner",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Git checkout and command execution runner over NATS",
   "type": "module",
   "bin": {
