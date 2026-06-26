@@ -52,7 +52,7 @@ Worker 運用者は GPU、high-memory、private repository など特性の異な
 ### 6.1 ローカル開発者が job を投入する
 
 ```bash
-npm install -D @research-booster/git-runner
+npm install -D @hachiware-labs/git-runner
 git-runner submit --repo . --command "npm test"
 ```
 
@@ -176,7 +176,7 @@ MVP で後回しにするもの:
 グローバルインストール:
 
 ```bash
-npm install -g @research-booster/git-runner
+npm install -g @hachiware-labs/git-runner
 git-runner init
 git-runner submit --command "pytest"
 git-runner worker
@@ -185,7 +185,7 @@ git-runner worker
 プロジェクトローカルインストール:
 
 ```bash
-npm install -D @research-booster/git-runner
+npm install -D @hachiware-labs/git-runner
 git-runner submit --command "npm test"
 ```
 
