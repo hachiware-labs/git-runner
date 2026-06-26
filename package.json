@@ -21,7 +21,7 @@
     "src/",
     "docs/"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
   "dependencies": {
     "@nats-io/jetstream": "^3.4.0",
     "@nats-io/transport-node": "^3.4.0",
